@@ -26,6 +26,8 @@ export default function ShoppingList({ supabase, user }) {
     setItems(data || [])
   }
 
+
+  
   const fetchSuggestions = async () => {
     const { data } = await supabase.from('past_items').select('name')
     setSuggestions(data?.map(d => d.name) || [])
@@ -85,23 +87,46 @@ export default function ShoppingList({ supabase, user }) {
         </div>
 
         {/* Suggestions Grid */}
-        {filteredSuggestions.length > 0 && (
-          <ul className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 gap-2 mt-2">
-            {filteredSuggestions.map(name => (
-              <li
-                key={name}
-                onClick={async () => {
-                  await addItem(name)
-                }}
-                className="bg-gray-400 text-white font-semibold flex flex-col items-center justify-center h-20 rounded-lg cursor-pointer shadow hover:scale-105 transition-transform p-2"
-              >
-                {name.split(' ').map((word, i) => (
-                  <FitText key={i} text={word} maxFont={18} minFont={10} padding={16} />
-                ))}
-              </li>
-            ))}
-          </ul>
-        )}
+{filteredSuggestions.length > 0 && (
+  <ul className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 gap-2 mt-2">
+    {filteredSuggestions.map(name => {
+      let timer;
+
+      const handlePressStart = (e) => {
+        e.preventDefault();
+        timer = setTimeout(async () => {
+          const confirmed = window.confirm(`Delete "${name}" from suggestions?`)
+          if (confirmed) {
+            await supabase.from('past_items').delete().eq('name', name)
+            setSuggestions(prev => prev.filter(s => s !== name))
+          }
+        }, 800);
+      }
+
+      const handlePressEnd = () => {
+        clearTimeout(timer);
+      }
+
+      return (
+        <li
+          key={name}
+          onMouseDown={handlePressStart}
+          onMouseUp={handlePressEnd}
+          onMouseLeave={handlePressEnd}
+          onTouchStart={handlePressStart}
+          onTouchEnd={handlePressEnd}
+          className="relative bg-gray-400 text-white font-semibold flex flex-col items-center justify-center h-20 rounded-lg cursor-pointer shadow hover:scale-105 transition-transform p-2"
+          onClick={async () => await addItem(name)}
+        >
+          {name.split(' ').map((word, i) => (
+            <FitText key={i} text={word} maxFont={18} minFont={10} padding={16} />
+          ))}
+        </li>
+      )
+    })}
+  </ul>
+)}
+
       </div>
     </div>
   )
