@@ -50,7 +50,7 @@ export default function ShoppingList({ supabase, user }) {
       <div className="w-full max-w-2xl bg-white shadow rounded-2xl p-4">
 
         {/* Shopping List Grid */}
-        <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+        <ul className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 gap-2">
           {items.map(item => (
             <li
               key={item.id}
@@ -86,7 +86,7 @@ export default function ShoppingList({ supabase, user }) {
 
         {/* Suggestions Grid */}
         {filteredSuggestions.length > 0 && (
-          <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 mt-2">
+          <ul className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 gap-2 mt-2">
             {filteredSuggestions.map(name => (
               <li
                 key={name}
