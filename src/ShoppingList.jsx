@@ -14,11 +14,32 @@ export default function ShoppingList({ supabase, user }) {
     fetchItems()        // initial fetch
     fetchSuggestions()  // load autocomplete suggestions
 
-    // Poll the items table every 2 seconds
-    const interval = setInterval(fetchItems, 2000)
+    // ✅ Subscribe to realtime changes on the items table
+    const channel = supabase
+      .channel('items-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'items' },
+        payload => {
+          console.log('Realtime change:', payload)
 
-    // Clean up the interval when the component unmounts
-    return () => clearInterval(interval)
+          if (payload.eventType === 'INSERT') {
+            setItems(prev => [...prev, payload.new])
+          } else if (payload.eventType === 'DELETE') {
+            setItems(prev => prev.filter(i => i.id !== payload.old.id))
+          } else if (payload.eventType === 'UPDATE') {
+            setItems(prev =>
+              prev.map(i => (i.id === payload.new.id ? payload.new : i))
+            )
+          }
+        }
+      )
+      .subscribe()
+
+    // Cleanup when component unmounts
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [])
 
   const fetchItems = async () => {
