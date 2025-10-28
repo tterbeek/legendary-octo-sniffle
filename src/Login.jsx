@@ -1,21 +1,21 @@
 // src/Login.jsx
 import { useState } from 'react'
-import { createClient } from '@supabase/supabase-js'
 import { supabase } from './supabaseClient'
-
-const { error } = await supabase.auth.signInWithOtp({
-  email,
-  options: {
-    emailRedirectTo: `${window.location.origin}/auth/callback`
-  }
-})
-
 
 export default function Login({ onLogin }) {
   const [email, setEmail] = useState('')
 
   const handleLogin = async () => {
-    const { error } = await supabase.auth.signInWithOtp({ email })
+    const trimmedEmail = email.trim()
+    if (!trimmedEmail) return alert('Enter your email')
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email: trimmedEmail,
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`
+      }
+    })
+
     if (error) alert(error.message)
     else alert('Check your email for the magic link!')
   }
