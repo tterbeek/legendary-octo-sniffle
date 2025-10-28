@@ -1,4 +1,3 @@
-// src/Login.jsx
 import { useState } from 'react'
 import { supabase } from './supabaseClient'
 
@@ -17,7 +16,7 @@ export default function Login({ onLogin }) {
     })
 
     if (error) alert(error.message)
-    else alert('Check your email for the magic link!')
+    else alert('Check your email for the magic link! Open it in Safari and return to the PWA.')
   }
 
   return (
@@ -32,7 +31,7 @@ export default function Login({ onLogin }) {
       />
       <button
         onClick={handleLogin}
-        className="bg-green-500 text-white px-4 py-2 rounded"
+        className="bg-customGreen text-white px-4 py-2 rounded"
       >
         Send Magic Link
       </button>

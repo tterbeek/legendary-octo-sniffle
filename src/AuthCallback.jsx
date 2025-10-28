@@ -1,34 +1,39 @@
-// src/AuthCallback.jsx
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from './supabaseClient'
+import { useNavigate } from 'react-router-dom'
 
 export default function AuthCallback() {
+  const [loading, setLoading] = useState(true)
+  const [errorMsg, setErrorMsg] = useState('')
+  const navigate = useNavigate()
+
   useEffect(() => {
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session) {
-        // Optionally store session locally if needed
-        console.log('Session restored:', session)
+    const handleAuth = async () => {
+      const { data, error } = await supabase.auth.getSessionFromUrl({ storeSession: true })
+      if (error) {
+        setErrorMsg(error.message)
+      } else if (data?.session) {
+        // Session is stored; user can now return to PWA
+        setErrorMsg('Success! You can now return to the PWA app.')
       }
+      setLoading(false)
     }
-    checkSession()
+
+    handleAuth()
   }, [])
 
   return (
-    <div className="flex flex-col items-center justify-center h-screen p-6">
-      <h1 className="text-xl font-bold mb-4">✅ Logged in!</h1>
-      <p className="text-center">
-        You can now return to the PWA to continue using the shopping list.
-      </p>
-      <p className="text-sm mt-2 text-gray-500">
-        On iOS, tap the PWA icon to switch back.
-      </p>
-      <button
-        className="mt-6 bg-customGreen text-white px-6 py-2 rounded"
-        onClick={() => window.close()} // attempts to close Safari tab
-      >
-        Return to App
-      </button>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-4 text-center">
+      {loading ? (
+        <p>Processing login...</p>
+      ) : errorMsg.includes('Success') ? (
+        <>
+          <p className="text-green-600 font-semibold mb-2">{errorMsg}</p>
+          <p>Switch back to the PWA to continue using the app.</p>
+        </>
+      ) : (
+        <p className="text-red-600 font-semibold">{errorMsg}</p>
+      )}
     </div>
   )
 }
