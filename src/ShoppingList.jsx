@@ -36,19 +36,34 @@ export default function ShoppingList({ supabase, user }) {
       )
       .subscribe()
 
+  // ✅ Subscribe to realtime changes on the past_items (suggestions) table
+  const suggestionsChannel = supabase
+    .channel('past-items-changes')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'past_items' },
+      payload => {
+        console.log('Realtime change (past_items):', payload)
+        fetchSuggestions() // refresh suggestions when changed
+      }
+    )
+    .subscribe()
+
+
     // Cleanup when component unmounts
     return () => {
       supabase.removeChannel(channel)
+      supabase.removeChannel(suggestionsChannel)
     }
   }, [])
 
   const fetchItems = async () => {
-    const { data } = await supabase
-      .from('items')
-      .select('*')
-      .order('created_at', { ascending: true })
-    setItems(data || [])
-  }
+  const { data } = await supabase
+    .from('items')
+    .select('*')
+    .order('created_at', { ascending: true })
+  setItems(data || [])
+}
 
   const handlePressStart = (item) => {
     timer = setTimeout(() => setActiveItem(item), 800)
@@ -57,10 +72,14 @@ export default function ShoppingList({ supabase, user }) {
   const handlePressEnd = () => clearTimeout(timer)
 
   
-  const fetchSuggestions = async () => {
-    const { data } = await supabase.from('past_items').select('name')
-    setSuggestions(data?.map(d => d.name) || [])
-  }
+const fetchSuggestions = async () => {
+  const { data } = await supabase
+    .from('past_items')
+    .select('name, updated_at')
+    .order('updated_at', { ascending: false })
+  setSuggestions(data?.map(d => d.name) || [])
+}
+
 
   const addItem = async name => {
     name = name.trim()
@@ -100,9 +119,15 @@ export default function ShoppingList({ supabase, user }) {
     <li
       key={item.id}
       onClick={async () => {
-        setItems(prev => prev.filter(i => i.id !== item.id))
-        await supabase.from('items').delete().eq('id', item.id)
-      }}
+      setItems(prev => prev.filter(i => i.id !== item.id))
+      await supabase.from('items').delete().eq('id', item.id)
+
+      // 🧠 bump the timestamp in past_items so it moves to top of suggestions
+      await supabase
+        .from('past_items')
+        .upsert([{ name: item.name, updated_at: new Date().toISOString() }])
+    }}
+
       onMouseDown={() => handlePressStart(item)}
       onMouseUp={handlePressEnd}
       onTouchStart={() => handlePressStart(item)}
