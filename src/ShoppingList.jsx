@@ -57,11 +57,12 @@ export default function ShoppingList({ supabase, user }) {
     }
   }, [])
 
-  const fetchItems = async () => {
+ // Shopping list
+const fetchItems = async () => {
   const { data } = await supabase
     .from('items')
     .select('*')
-    .order('created_at', { ascending: true })
+    .order('created_at', { ascending: true }) // newest last
   setItems(data || [])
 }
 
@@ -72,11 +73,12 @@ export default function ShoppingList({ supabase, user }) {
   const handlePressEnd = () => clearTimeout(timer)
 
   
+// Fetch and sort suggestions so recently removed ones appear first
 const fetchSuggestions = async () => {
   const { data } = await supabase
     .from('past_items')
     .select('name, updated_at')
-    .order('updated_at', { ascending: false })
+    .order('updated_at', { ascending: false }) // newest first
   setSuggestions(data?.map(d => d.name) || [])
 }
 
@@ -118,16 +120,25 @@ const fetchSuggestions = async () => {
   {items.map(item => (
     <li
       key={item.id}
+      // When removing an item
       onClick={async () => {
-      setItems(prev => prev.filter(i => i.id !== item.id))
-      await supabase.from('items').delete().eq('id', item.id)
+        // Remove from shopping list
+        setItems(prev => prev.filter(i => i.id !== item.id))
+        await supabase.from('items').delete().eq('id', item.id)
 
-      // 🧠 bump the timestamp in past_items so it moves to top of suggestions
-      await supabase
-        .from('past_items')
-        .upsert([{ name: item.name, updated_at: new Date().toISOString() }])
-    }}
+        // Move to top of suggestions
+        setSuggestions(prev => {
+          const name = item.name
+          const updated = [name, ...prev.filter(s => s !== name)]
+          return updated
+        })
 
+        // Update its timestamp in Supabase for persistence
+        await supabase.from('past_items').upsert([{ 
+          name: item.name, 
+          updated_at: new Date().toISOString() 
+        }])
+      }}
       onMouseDown={() => handlePressStart(item)}
       onMouseUp={handlePressEnd}
       onTouchStart={() => handlePressStart(item)}
