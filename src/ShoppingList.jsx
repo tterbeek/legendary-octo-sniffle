@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import FitText from './FitText'
+import { supabase } from './supabaseClient'
+
 
 export default function ShoppingList({ supabase, user }) {
   const [items, setItems] = useState([])
