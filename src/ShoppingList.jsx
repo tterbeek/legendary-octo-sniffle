@@ -5,6 +5,9 @@ export default function ShoppingList({ supabase, user }) {
   const [items, setItems] = useState([])
   const [input, setInput] = useState('')
   const [suggestions, setSuggestions] = useState([])
+  const [activeItem, setActiveItem] = useState(null)
+
+  let timer;
 
   // Fetch current list
   useEffect(() => {
@@ -26,6 +29,11 @@ export default function ShoppingList({ supabase, user }) {
     setItems(data || [])
   }
 
+  const handlePressStart = (item) => {
+    timer = setTimeout(() => setActiveItem(item), 800)
+    }
+
+  const handlePressEnd = () => clearTimeout(timer)
 
   
   const fetchSuggestions = async () => {
@@ -35,7 +43,7 @@ export default function ShoppingList({ supabase, user }) {
 
   const addItem = async name => {
     if (!name.trim()) return
-    await supabase.from('items').insert([{ name }])
+    await supabase.from('items').insert([{ name, quantity: 1 }])
     await supabase.from('past_items').upsert([{ name }])
     setInput('')
   }
@@ -54,20 +62,82 @@ export default function ShoppingList({ supabase, user }) {
         {/* Shopping List Grid */}
         <ul className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 gap-2">
           {items.map(item => (
-            <li
-              key={item.id}
-              onClick={async () => {
-                setItems(prev => prev.filter(i => i.id !== item.id))
-                await supabase.from('items').delete().eq('id', item.id)
-              }}
-              className="bg-green-500 text-white font-semibold flex flex-col items-center justify-center h-24 rounded-lg cursor-pointer shadow hover:scale-105 transition-transform p-2"
-            >
-              {item.name.split(' ').map((word, i) => (
-                <FitText key={i} text={word} maxFont={20} minFont={10} padding={16} />
-              ))}
-            </li>
+        <li
+          key={item.id}
+          onClick={async () => {
+            setItems(prev => prev.filter(i => i.id !== item.id))
+            await supabase.from('items').delete().eq('id', item.id)
+          }}
+          onMouseDown={() => handlePressStart(item)}
+          onMouseUp={handlePressEnd}
+          onTouchStart={() => handlePressStart(item)}
+          onTouchEnd={handlePressEnd}
+          className="relative bg-green-500 text-white font-semibold flex flex-col items-center justify-center h-24 rounded-lg cursor-pointer shadow hover:scale-105 transition-transform p-2"
+        >
+          {item.name.split(' ').map((word, i) => (
+            <FitText key={i} text={word} maxFont={20} minFont={10} padding={16} />
+          ))}
+
+          {item.quantity > 1 && (
+            <div className="absolute top-1 right-1 bg-white text-green-700 text-xs font-bold rounded-full px-2 py-0.5">
+              {item.quantity}
+            </div>
+          )}
+        </li>
+
           ))}
         </ul>
+ {/* Dialog for quantity */} 
+    {activeItem && (
+      <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+        <div className="bg-white p-4 rounded-xl shadow-md w-64 text-center">
+          <h2 className="text-lg font-semibold mb-2">{activeItem.name}</h2>
+          <div className="flex justify-center gap-2 mb-2">
+            {[1, 2, 3, 4, 5].map(num => (
+              <button
+                key={num}
+                onClick={async () => {
+                  await supabase.from('items').update({ quantity: num }).eq('id', activeItem.id)
+                  setItems(prev =>
+                    prev.map(i => (i.id === activeItem.id ? { ...i, quantity: num } : i))
+                  )
+                  setActiveItem(null)
+                }}
+                className="bg-green-500 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-green-600"
+              >
+                {num}
+              </button>
+            ))}
+          </div>
+          <input
+            type="number"
+            min="1"
+            placeholder="Custom number"
+            className="border rounded px-2 py-1 w-full mb-3"
+            onKeyDown={async e => {
+              if (e.key === 'Enter') {
+                const num = parseInt(e.target.value)
+                if (!isNaN(num) && num > 0) {
+                  await supabase.from('items').update({ quantity: num }).eq('id', activeItem.id)
+                  setItems(prev =>
+                    prev.map(i => (i.id === activeItem.id ? { ...i, quantity: num } : i))
+                  )
+                  setActiveItem(null)
+                }
+              }
+            }}
+          />
+          <button
+            onClick={() => setActiveItem(null)}
+            className="text-gray-500 underline text-sm"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    )}
+
+
 
         {/* Search Input */}
         <div className="flex mt-4 mb-2">
