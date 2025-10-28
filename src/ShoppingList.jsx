@@ -72,14 +72,14 @@ export default function ShoppingList({ supabase, user }) {
           onMouseUp={handlePressEnd}
           onTouchStart={() => handlePressStart(item)}
           onTouchEnd={handlePressEnd}
-          className="relative bg-green-500 text-white font-semibold flex flex-col items-center justify-center h-24 rounded-lg cursor-pointer shadow hover:scale-105 transition-transform p-2"
+          className="relative bg-customGreen text-white font-semibold flex flex-col items-center justify-center h-24 rounded-lg cursor-pointer shadow hover:scale-105 transition-transform p-2"
         >
           {item.name.split(' ').map((word, i) => (
             <FitText key={i} text={word} maxFont={20} minFont={10} padding={16} />
           ))}
 
           {item.quantity > 1 && (
-            <div className="absolute top-1 right-1 bg-white text-green-700 text-xs font-bold rounded-full px-2 py-0.5">
+            <div className="absolute top-1 right-1 bg-white text-customGreen text-xs font-bold rounded-full px-2 py-0.5">
               {item.quantity}
             </div>
           )}
@@ -103,7 +103,7 @@ export default function ShoppingList({ supabase, user }) {
                   )
                   setActiveItem(null)
                 }}
-                className="bg-green-500 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-green-600"
+              className="bg-customGreen text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-customGreen/80"
               >
                 {num}
               </button>
@@ -150,7 +150,7 @@ export default function ShoppingList({ supabase, user }) {
           />
           <button
             onClick={() => addItem(input)}
-            className="bg-green-500 text-white px-4 rounded-r-lg"
+              className="bg-customGreen text-white px-4 rounded-r-lg"
           >
             Add
           </button>
