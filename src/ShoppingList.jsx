@@ -42,11 +42,25 @@ export default function ShoppingList({ supabase, user }) {
   }
 
   const addItem = async name => {
-    if (!name.trim()) return
+    name = name.trim()
+    if (!name) return
+
+    // Prevent duplicates in current items
+    const exists = items.some(i => i.name.toLowerCase() === name.toLowerCase())
+    if (exists) {
+      alert(`"${name}" is already in your shopping list.`)
+      return
+    }
+
+    // Insert into Supabase
     await supabase.from('items').insert([{ name, quantity: 1 }])
     await supabase.from('past_items').upsert([{ name }])
     setInput('')
+
+    // Optionally, fetch the latest items to sync
+    fetchItems()
   }
+
 
   // Compute filtered suggestions dynamically based on input and current items
   const filteredSuggestions = suggestions.filter(
