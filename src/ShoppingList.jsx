@@ -73,34 +73,38 @@ export default function ShoppingList({ supabase, user }) {
 
       <div className="w-full max-w-2xl bg-white shadow rounded-2xl p-4">
 
-        {/* Shopping List Grid */}
-        <ul className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-          {items.map(item => (
-        <li
-          key={item.id}
-          onClick={async () => {
-            setItems(prev => prev.filter(i => i.id !== item.id))
-            await supabase.from('items').delete().eq('id', item.id)
-          }}
-          onMouseDown={() => handlePressStart(item)}
-          onMouseUp={handlePressEnd}
-          onTouchStart={() => handlePressStart(item)}
-          onTouchEnd={handlePressEnd}
-          className="relative bg-customGreen text-white font-semibold flex flex-col items-center justify-center h-24 rounded-lg cursor-pointer shadow hover:scale-105 transition-transform p-2"
-        >
-          {item.name.split(' ').map((word, i) => (
-            <FitText key={i} text={word} maxFont={20} minFont={10} padding={16} />
-          ))}
+{/* Shopping List Grid */}
+<ul className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+  {items.map(item => (
+    <li
+      key={item.id}
+      onClick={async () => {
+        setItems(prev => prev.filter(i => i.id !== item.id))
+        await supabase.from('items').delete().eq('id', item.id)
+      }}
+      onMouseDown={() => handlePressStart(item)}
+      onMouseUp={handlePressEnd}
+      onTouchStart={() => handlePressStart(item)}
+      onTouchEnd={handlePressEnd}
+      className="relative bg-customGreen text-white font-semibold flex flex-col items-center justify-center h-24 rounded-lg cursor-pointer shadow hover:scale-105 transition-transform p-2 select-none"
+      style={{
+        WebkitUserSelect: 'none',
+        WebkitTouchCallout: 'none',
+      }}
+    >
+      {item.name.split(' ').map((word, i) => (
+        <FitText key={i} text={word} maxFont={20} minFont={10} padding={16} />
+      ))}
 
-          {item.quantity > 1 && (
-            <div className="absolute top-1 right-1 bg-white text-customGreen text-xs font-bold rounded-full px-2 py-0.5">
-              {item.quantity}
-            </div>
-          )}
-        </li>
+      {item.quantity > 1 && (
+        <div className="absolute top-1 right-1 bg-white text-customGreen text-xs font-bold rounded-full px-2 py-0.5">
+          {item.quantity}
+        </div>
+      )}
+    </li>
+  ))}
+</ul>
 
-          ))}
-        </ul>
  {/* Dialog for quantity */} 
     {activeItem && (
       <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
@@ -170,46 +174,51 @@ export default function ShoppingList({ supabase, user }) {
           </button>
         </div>
 
-        {/* Suggestions Grid */}
-{filteredSuggestions.length > 0 && (
-  <ul className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 gap-2 mt-2">
-    {filteredSuggestions.map(name => {
-      let timer;
+    {/* Suggestions Grid */}
+    {filteredSuggestions.length > 0 && (
+      <ul className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 gap-2 mt-2">
+        {filteredSuggestions.map(name => {
+          let timer;
 
-      const handlePressStart = (e) => {
-        e.preventDefault();
-        timer = setTimeout(async () => {
-          const confirmed = window.confirm(`Delete "${name}" from suggestions?`)
-          if (confirmed) {
-            await supabase.from('past_items').delete().eq('name', name)
-            setSuggestions(prev => prev.filter(s => s !== name))
+          const handlePressStart = (e) => {
+            e.preventDefault();
+            timer = setTimeout(async () => {
+              const confirmed = window.confirm(`Delete "${name}" from suggestions?`)
+              if (confirmed) {
+                await supabase.from('past_items').delete().eq('name', name)
+                setSuggestions(prev => prev.filter(s => s !== name))
+              }
+            }, 800);
           }
-        }, 800);
-      }
 
-      const handlePressEnd = () => {
-        clearTimeout(timer);
-      }
+          const handlePressEnd = () => {
+            clearTimeout(timer);
+          }
 
-      return (
-        <li
-          key={name}
-          onMouseDown={handlePressStart}
-          onMouseUp={handlePressEnd}
-          onMouseLeave={handlePressEnd}
-          onTouchStart={handlePressStart}
-          onTouchEnd={handlePressEnd}
-          className="relative bg-gray-400 text-white font-semibold flex flex-col items-center justify-center h-20 rounded-lg cursor-pointer shadow hover:scale-105 transition-transform p-2"
-          onClick={async () => await addItem(name)}
-        >
-          {name.split(' ').map((word, i) => (
-            <FitText key={i} text={word} maxFont={18} minFont={10} padding={16} />
-          ))}
-        </li>
-      )
-    })}
-  </ul>
-)}
+          return (
+            <li
+              key={name}
+              onMouseDown={handlePressStart}
+              onMouseUp={handlePressEnd}
+              onMouseLeave={handlePressEnd}
+              onTouchStart={handlePressStart}
+              onTouchEnd={handlePressEnd}
+              onClick={async () => await addItem(name)}
+              className="relative bg-gray-400 text-white font-semibold flex flex-col items-center justify-center h-20 rounded-lg cursor-pointer shadow hover:scale-105 transition-transform p-2 select-none"
+              style={{
+                WebkitUserSelect: 'none',
+                WebkitTouchCallout: 'none',
+              }}
+            >
+              {name.split(' ').map((word, i) => (
+                <FitText key={i} text={word} maxFont={18} minFont={10} padding={16} />
+              ))}
+            </li>
+          )
+        })}
+      </ul>
+    )}
+
 
       </div>
     </div>
