@@ -1,22 +1,19 @@
+// src/Login.jsx
 import { useState } from 'react'
-import { supabase } from './supabaseClient'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+)
 
 export default function Login({ onLogin }) {
   const [email, setEmail] = useState('')
 
   const handleLogin = async () => {
-    const trimmedEmail = email.trim()
-    if (!trimmedEmail) return alert('Enter your email')
-
-    const { error } = await supabase.auth.signInWithOtp({
-      email: trimmedEmail,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`
-      }
-    })
-
+    const { error } = await supabase.auth.signInWithOtp({ email })
     if (error) alert(error.message)
-    else alert('Check your email for the magic link! Open it in Safari and return to the PWA.')
+    else alert('Check your email for the magic link!')
   }
 
   return (
@@ -31,7 +28,7 @@ export default function Login({ onLogin }) {
       />
       <button
         onClick={handleLogin}
-        className="bg-customGreen text-white px-4 py-2 rounded"
+        className="bg-green-500 text-white px-4 py-2 rounded"
       >
         Send Magic Link
       </button>

@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react'
 import FitText from './FitText'
-import { supabase } from './supabaseClient'
-
 
 export default function ShoppingList({ supabase, user }) {
   const [items, setItems] = useState([])
@@ -54,31 +52,13 @@ export default function ShoppingList({ supabase, user }) {
       return
     }
 
-  const moveItemToSuggestions = itemName => {
-    setSuggestions(prev => {
-      const filtered = prev.filter(s => s !== itemName)
-      return [itemName, ...filtered]
-    })
-  }
-
-
     // Insert into Supabase
-    const { data: newItem, error } = await supabase
-      .from('items')
-      .insert([{ name, quantity: 1 }])
-      .select()
-      .single() // get the inserted row with real ID
-
-    if (error) {
-      alert(error.message)
-      return
-    }
-
+    await supabase.from('items').insert([{ name, quantity: 1 }])
     await supabase.from('past_items').upsert([{ name }])
     setInput('')
 
-    // Append to end of local state to always show last in the grid
-    setItems(prev => [...prev, newItem])
+    // Optionally, fetch the latest items to sync
+    fetchItems()
   }
 
 
@@ -102,10 +82,7 @@ export default function ShoppingList({ supabase, user }) {
         setItems(prev => prev.filter(i => i.id !== item.id))
         await supabase.from('items').delete().eq('id', item.id)
       }}
-      onMouseDown={() => {
-        handlePressStart(item)
-        moveItemToSuggestions(item)
-      }}
+      onMouseDown={() => handlePressStart(item)}
       onMouseUp={handlePressEnd}
       onTouchStart={() => handlePressStart(item)}
       onTouchEnd={handlePressEnd}
