@@ -15,16 +15,18 @@ export default function ShoppingList({ supabase, user }) {
     fetchSuggestions()  // load autocomplete suggestions
 
     // ✅ Subscribe to realtime changes on the items table
-    const channel = supabase
+        const channel = supabase
       .channel('items-changes')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'items' },
         payload => {
-          console.log('Realtime change:', payload)
-
           if (payload.eventType === 'INSERT') {
-            setItems(prev => [...prev, payload.new])
+            setItems(prev => {
+              // ✅ Avoid duplicates by checking id
+              if (prev.some(i => i.id === payload.new.id)) return prev
+              return [...prev, payload.new]
+            })
           } else if (payload.eventType === 'DELETE') {
             setItems(prev => prev.filter(i => i.id !== payload.old.id))
           } else if (payload.eventType === 'UPDATE') {
@@ -35,6 +37,7 @@ export default function ShoppingList({ supabase, user }) {
         }
       )
       .subscribe()
+
 
   // ✅ Subscribe to realtime changes on the past_items (suggestions) table
   const suggestionsChannel = supabase
@@ -84,24 +87,23 @@ const fetchSuggestions = async () => {
 
 
   const addItem = async name => {
-    name = name.trim()
-    if (!name) return
+  name = name.trim()
+  if (!name) return
 
-    // Prevent duplicates in current items
-    const exists = items.some(i => i.name.toLowerCase() === name.toLowerCase())
-    if (exists) {
-      alert(`"${name}" is already in your shopping list.`)
-      return
-    }
-
-    // Insert into Supabase
-    await supabase.from('items').insert([{ name, quantity: 1 }])
-    await supabase.from('past_items').upsert([{ name }])
-    setInput('')
-
-    // Optionally, fetch the latest items to sync
-    fetchItems()
+  // Prevent duplicates
+  const exists = items.some(i => i.name.toLowerCase() === name.toLowerCase())
+  if (exists) {
+    alert(`"${name}" is already in your shopping list.`)
+    return
   }
+
+  await supabase.from('items').insert([{ name, quantity: 1 }])
+  await supabase.from('past_items').upsert([{ name }])
+  setInput('') // clear input
+
+  // ✅ NO fetchItems() here
+}
+
 
 
   // Compute filtered suggestions dynamically based on input and current items
