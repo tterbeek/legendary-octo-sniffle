@@ -9,6 +9,10 @@ const supabase = createClient(
 
 const resend = new Resend(process.env.RESEND_API_KEY!);
 
+console.log('SUPABASE_URL', process.env.SUPABASE_URL);
+console.log('SUPABASE_SERVICE_ROLE_KEY', !!process.env.SUPABASE_SERVICE_ROLE_KEY);
+
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
 
