@@ -5,7 +5,7 @@ import { supabase } from './supabaseClient'
 export default function Sidebar({ lists, setLists, currentList, setCurrentList, session, closeSidebar }) {
   const [newListName, setNewListName] = useState('')
   const [showDeleteTip, setShowDeleteTip] = useState(null) // stores list.id for tooltip
-
+  const [loading, setLoading] = useState(false);
   const functionsUrl = import.meta.env.VITE_SUPABASE_FUNCTIONS_URL
 
   // Create a new list
