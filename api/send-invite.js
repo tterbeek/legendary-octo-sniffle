@@ -65,8 +65,8 @@ export default async function handler(req, res) {
       // ----------------------------
       const { error: memberError } = await supabaseAdmin
         .from('list_members')
-        .insert([{ list_id: listId, user_id: existingUser.id, role: 'editor' }])
-        .onConflict(['list_id', 'user_id']); // prevent duplicates
+        .upsert([{ list_id, user_id, role }], { onConflict: ['list_id', 'user_id'] });
+
 
       if (memberError) console.error('Error adding existing user to list_members:', memberError);
 
