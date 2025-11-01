@@ -155,7 +155,7 @@ return (
     {/* Share current list */}
     {currentList && (
       <button
-        className="mt-4 w-full customGreen text-white px-2 py-1 rounded"
+        className="mt-4 w-full bg-customGreen text-white px-2 py-1 rounded"
         onClick={handleShareList}
       >
         Share List

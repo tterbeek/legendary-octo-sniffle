@@ -133,7 +133,7 @@ useEffect(() => {
                 <p className="mb-4 text-gray-600">No list selected</p>
                 <button
                   onClick={() => setSidebarOpen(true)}
-                  className="px-4 py-2 customGreen text-white rounded shadow hover:bg-blue-700"
+                  className="px-4 py-2 bg-customGreen text-white rounded shadow hover:bg-blue-700"
                 >
                   Create or Select a List
                 </button>
