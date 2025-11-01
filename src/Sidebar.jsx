@@ -43,55 +43,58 @@ const handleShareList = async () => {
   try {
     const inviteId = crypto.randomUUID();
 
-    // 1️⃣ Insert invite into list_invites table
-    const { error: inviteError } = await supabase.from('list_invites').insert([{
-      id: inviteId,
-      list_id: currentList.id,
-      email,
-      role: 'editor',
-      created_at: new Date().toISOString(),
-    }]);
-
-    if (inviteError) return alert(`Failed to create invite: ${inviteError.message}`);
-
-    // 2️⃣ Call Edge Function to handle email sending / member adding
-    const functionsUrl = import.meta.env.VITE_SUPABASE_FUNCTIONS_URL;
-    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-    const user = (await supabase.auth.getUser()).data.user; // 👈 Get current logged-in user
-    const inviterEmail = user?.email; // 👈 Add inviter email here
-
-    const response = await fetch(`${functionsUrl}/send-invite`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${anonKey}`,
-      },
-      body: JSON.stringify({
+    // 1️⃣ Insert invite record
+    const { error: inviteError } = await supabase.from('list_invites').insert([
+      {
+        id: inviteId,
+        list_id: currentList.id,
         email,
-        listName: currentList.name,
-        inviteId,
-        listId: currentList.id,       // 👈 important
-        inviterEmail: user.email,     // 👈 add this (the logged-in user)
-        }),
+        role: 'editor',
+        created_at: new Date().toISOString(),
+      },
+    ]);
 
-    });
+    if (inviteError) {
+      console.error('Failed to create invite:', inviteError);
+      return alert(`Failed to create invite: ${inviteError.message}`);
+    }
+
+    // 2️⃣ Call the new Vercel API route
+    const user = (await supabase.auth.getUser()).data.user;
+    const inviterEmail = user?.email;
+
+    const response = await fetch(
+      'https://legendary-octo-sniffle.vercel.app/api/send-invite',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email,
+          listName: currentList.name,
+          inviteId,
+          listId: currentList.id,
+          inviterEmail,
+        }),
+      }
+    );
 
     const result = await response.json();
 
-    if (!result.success) {
-      console.error('Invite function error:', result.error);
+    if (!response.ok || !result.success) {
+      console.error('Invite failed:', result.error);
       return alert(`Failed to send invite: ${result.error}`);
     }
 
     if (result.invited === 'existing') {
       alert(`List shared with ${email} (existing user). They’ve been notified by email.`);
     } else {
-      alert(`Invite email sent to ${email}. User will join when they sign up.`);
+      alert(`Invite email sent to ${email}. They can join via their signup link.`);
     }
   } catch (error) {
     console.error('Error sharing list:', error);
-    alert('Failed to share the list. See console for details.');
+    alert('Failed to share list. Check console for details.');
   }
 };
 

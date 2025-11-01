@@ -1,41 +1,74 @@
-import { VercelRequest, VercelResponse } from '@vercel/node';
-import { createClient } from '@supabase/supabase-js';
+import { NextResponse } from 'next/server';
 import { Resend } from 'resend';
+import { createClient } from '@supabase/supabase-js';
 
+const resend = new Resend(process.env.RESEND_API_KEY!);
 const supabase = createClient(
-  process.env.SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const resend = new Resend(process.env.RESEND_API_KEY!);
+export async function OPTIONS() {
+  return new NextResponse('OK', {
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    },
+  });
+}
 
-console.log('SUPABASE_URL', process.env.SUPABASE_URL);
-console.log('SUPABASE_SERVICE_ROLE_KEY', !!process.env.SUPABASE_SERVICE_ROLE_KEY);
-
-
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
-
+export async function POST(req: Request) {
   try {
-    const { email, listName, inviteId, inviterEmail } = req.body;
+    const { email, listName, inviteId, listId, inviterEmail } = await req.json();
 
-    if (!email || !listName || !inviteId || !inviterEmail)
-      return res.status(400).json({ success: false, error: 'Missing required fields' });
+    if (!email || !listName || !inviteId || !listId || !inviterEmail) {
+      return NextResponse.json(
+        { success: false, error: 'Missing required fields' },
+        { status: 400 }
+      );
+    }
 
-    // Construct invite link
+    // Check if user exists in auth.users
+    const { data: userData, error: userError } = await supabase.auth.admin.listUsers();
+    if (userError) throw userError;
+
+    const existingUser = userData?.users?.find(
+      (u) => u.email?.toLowerCase() === email.toLowerCase()
+    );
+
+    if (existingUser) {
+      // Send email to existing user
+      await resend.emails.send({
+        from: 'GrocLi <info@grocli.thijsterbeek.com>',
+        to: email,
+        subject: `You've been granted access to ${listName}`,
+        html: `<p>${inviterEmail} added you to the list <b>${listName}</b>.</p>`,
+      });
+
+      return NextResponse.json({ success: true, invited: 'existing' });
+    }
+
+    // Otherwise send new invite link
     const inviteLink = `${process.env.APP_URL}/login?invite=${inviteId}&email=${encodeURIComponent(email)}`;
 
     await resend.emails.send({
-      from: `GrocLi <info@grocli.thijsterbeek.com>`,
+      from: 'GrocLi <info@grocli.thijsterbeek.com>',
       to: email,
       subject: `You're invited to join ${listName}`,
-      html: `<p>${inviterEmail} invited you to <strong>${listName}</strong></p>
-             <a href="${inviteLink}">Join the list</a>`,
+      html: `
+        <h2>You've been invited to join <strong>${listName}</strong></h2>
+        <p>Invited by: ${inviterEmail}</p>
+        <p><a href="${inviteLink}">Join the list</a></p>
+      `,
     });
 
-    return res.status(200).json({ success: true });
-  } catch (err: any) {
-    console.error('send-invite error:', err);
-    return res.status(500).json({ success: false, error: err.message });
+    return NextResponse.json({ success: true, invited: 'new' });
+  } catch (error: any) {
+    console.error('send-invite error:', error);
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    );
   }
 }
