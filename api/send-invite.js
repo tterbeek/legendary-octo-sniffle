@@ -1,53 +1,42 @@
 // api/send-invite.js
-import { Resend } from 'resend';
 import { createClient } from '@supabase/supabase-js';
+import { Resend } from 'resend';
 
-// Environment variables
-const resend = new Resend(process.env.RESEND_API_KEY);
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// ✅ Helper for CORS headers
+const resend = new Resend(process.env.RESEND_API_KEY);
+
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*', // or your domain
+  'Access-Control-Allow-Origin': '*', // adjust to your frontend
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Headers': 'Content-Type',
 };
 
 export default async function handler(req, res) {
-  // 1️⃣ Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    return res.writeHead(200, corsHeaders).end('OK');
-  }
+  if (req.method === 'OPTIONS') return res.status(200).setHeader(corsHeaders).end();
 
-  // 2️⃣ Reject non-POST requests
-  if (req.method !== 'POST') {
-    return res.writeHead(405, corsHeaders).end('Method Not Allowed');
-  }
+  if (req.method !== 'POST')
+    return res.status(405).setHeader(corsHeaders).end('Method Not Allowed');
 
   try {
     const { email, listName, inviteId, listId, inviterEmail } = req.body || {};
-
-    if (!email || !listName || !inviteId || !listId || !inviterEmail) {
-      return res
-        .writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json' })
-        .end(JSON.stringify({ success: false, error: 'Missing required fields' }));
-    }
+    if (!email || !listName || !inviteId || !listId || !inviterEmail)
+      return res.status(400).json({ success: false, error: 'Missing required fields' });
 
     console.log('send-invite called:', { email, listName, inviteId, inviterEmail });
 
     // ✅ Check if user exists in Supabase Auth
-    const { data: usersData, error: usersError } = await supabase.auth.admin.listUsers();
-    if (usersError) throw usersError;
-
-    const existingUser = usersData.users.find(
-      (u) => u.email?.toLowerCase() === email.toLowerCase()
-    );
+    const { data: existingUser } = await supabase.auth.admin.getUserByEmail(email);
 
     if (existingUser) {
-      // Existing user → send notification email
+      // Existing user → add to list_members and send notification email
+      await supabase.from('list_members').insert([
+        { list_id: listId, user_id: existingUser.id, role: 'editor' },
+      ]);
+
       await resend.emails.send({
         from: 'GrocLi <info@grocli.thijsterbeek.com>',
         to: email,
@@ -55,13 +44,12 @@ export default async function handler(req, res) {
         html: `<p>${inviterEmail} has added you to <strong>${listName}</strong>.</p>`,
       });
 
-      return res
-        .writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' })
-        .end(JSON.stringify({ success: true, invited: 'existing' }));
+      return res.status(200).json({ success: true, invited: 'existing' });
     }
 
     // New user → send invite link
-    const inviteLink = `${process.env.APP_URL || 'http://localhost:5173'}/login?invite=${inviteId}&email=${encodeURIComponent(email)}`;
+    const appUrl = process.env.APP_URL || 'http://localhost:5173';
+    const inviteLink = `${appUrl}/login?invite=${inviteId}&email=${encodeURIComponent(email)}`;
 
     await resend.emails.send({
       from: 'GrocLi <info@grocli.thijsterbeek.com>',
@@ -74,13 +62,9 @@ export default async function handler(req, res) {
       `,
     });
 
-    return res
-      .writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' })
-      .end(JSON.stringify({ success: true, invited: 'new' }));
+    return res.status(200).json({ success: true, invited: 'new' });
   } catch (error) {
     console.error('send-invite error:', error);
-    return res
-      .writeHead(500, { ...corsHeaders, 'Content-Type': 'application/json' })
-      .end(JSON.stringify({ success: false, error: error.message }));
+    return res.status(500).json({ success: false, error: error.message });
   }
 }

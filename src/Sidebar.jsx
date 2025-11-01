@@ -43,42 +43,41 @@ const handleShareList = async () => {
   try {
     const inviteId = crypto.randomUUID();
 
-    // 1️⃣ Insert invite record
-    const { error: inviteError } = await supabase.from('list_invites').insert([
-      {
-        id: inviteId,
-        list_id: currentList.id,
-        email,
-        role: 'editor',
-        created_at: new Date().toISOString(),
-      },
-    ]);
+    // 1️⃣ Insert invite record in list_invites
+    const { data: inviteData, error: inviteError } = await supabase
+      .from('list_invites')
+      .insert([
+        {
+          id: inviteId,
+          list_id: currentList.id,
+          email,
+          role: 'editor',
+          created_at: new Date().toISOString(),
+        },
+      ])
+      .select()
+      .single();
 
     if (inviteError) {
       console.error('Failed to create invite:', inviteError);
       return alert(`Failed to create invite: ${inviteError.message}`);
     }
 
-    // 2️⃣ Call the new Vercel API route
+    // 2️⃣ Call Vercel API to send email
     const user = (await supabase.auth.getUser()).data.user;
     const inviterEmail = user?.email;
 
-    const response = await fetch(
-      'https://legendary-octo-sniffle.vercel.app/api/send-invite',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email,
-          listName: currentList.name,
-          inviteId,
-          listId: currentList.id,
-          inviterEmail,
-        }),
-      }
-    );
+    const response = await fetch('https://legendary-octo-sniffle.vercel.app/api/send-invite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        listName: currentList.name,
+        inviteId: inviteData.id,
+        listId: currentList.id,
+        inviterEmail,
+      }),
+    });
 
     const result = await response.json();
 
@@ -94,9 +93,10 @@ const handleShareList = async () => {
     }
   } catch (error) {
     console.error('Error sharing list:', error);
-    alert('Failed to share list. Check console for details.');
+    alert('Failed to share list. See console for details.');
   }
 };
+
 
 
 return (
