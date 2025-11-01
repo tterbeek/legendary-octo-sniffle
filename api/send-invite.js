@@ -2,7 +2,14 @@
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 
+// Regular client for public queries (if needed)
 const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
+
+// Admin client for server-side only operations
+const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
@@ -29,7 +36,8 @@ export default async function handler(req, res) {
     console.log('send-invite called:', { email, listName, inviteId, inviterEmail });
 
     // ✅ Check if user exists in Supabase Auth
-    const { data: existingUser } = await supabase.auth.admin.getUserByEmail(email);
+    const { data: existingUser, error } = await supabaseAdmin.auth.admin.getUserByEmail(email);
+
 
     if (existingUser) {
       // Existing user → add to list_members and send notification email
