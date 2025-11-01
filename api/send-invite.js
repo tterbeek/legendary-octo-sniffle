@@ -52,6 +52,8 @@ export default async function handler(req, res) {
     });
 
     console.log('listUsers response:', usersData, 'error:', usersError);
+    console.log('Checking if user exists for email:', email);
+
 
     if (usersError) throw usersError;
 
