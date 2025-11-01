@@ -1,55 +1,76 @@
-// api/send-invite.js
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 
-// Regular client for public queries (if needed)
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
+// ----------------------------
+// Environment variables
+// ----------------------------
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const APP_URL = process.env.APP_URL || 'http://localhost:5173';
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
 
-// Admin client for server-side only operations
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+// ----------------------------
+// Supabase Admin client & Resend
+// ----------------------------
+const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+const resend = new Resend(RESEND_API_KEY);
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
+// ----------------------------
+// CORS headers helper
+// ----------------------------
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*', // adjust to your frontend
+  'Access-Control-Allow-Origin': '*', // restrict in production
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
+// ----------------------------
+// API Handler
+// ----------------------------
 export default async function handler(req, res) {
-  if (req.method === 'OPTIONS') return res.status(200).setHeader(corsHeaders).end();
+  // CORS preflight
+  if (req.method === 'OPTIONS') {
+    return res.writeHead(200, corsHeaders).end('OK');
+  }
 
-  if (req.method !== 'POST')
-    return res.status(405).setHeader(corsHeaders).end('Method Not Allowed');
+  if (req.method !== 'POST') {
+    return res.writeHead(405, corsHeaders).end('Method Not Allowed');
+  }
 
   try {
-    const { email, listName, inviteId, listId, inviterEmail } = req.body || {};
-    if (!email || !listName || !inviteId || !listId || !inviterEmail)
-      return res.status(400).json({ success: false, error: 'Missing required fields' });
+    const { email, listId, listName, inviterEmail } = req.body || {};
 
-    console.log('send-invite called:', { email, listName, inviteId, inviterEmail });
+    if (!email || !listId || !listName || !inviterEmail) {
+      return res
+        .writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json' })
+        .end(JSON.stringify({ success: false, error: 'Missing required fields' }));
+    }
 
-    // ✅ Check if user exists in Supabase Auth
-    const { data: users, error } = await supabaseAdmin.auth.admin.listUsers({
-    filter: `email=eq.${email}`
+    // ----------------------------
+    // Check if the user exists via Supabase Admin
+    // ----------------------------
+    const { data: usersData, error: usersError } = await supabaseAdmin.auth.admin.listUsers({
+      filter: `email=eq.${email}`,
+      page: 0,
+      per_page: 1,
     });
-    if (error) throw error;
-    const existingUser = users?.[0];
 
+    if (usersError) throw usersError;
 
+    const existingUser = usersData?.users?.[0];
 
     if (existingUser) {
-      // Existing user → add to list_members and send notification email
-      await supabase.from('list_members').insert([
-        { list_id: listId, user_id: existingUser.id, role: 'editor' },
-      ]);
+      // ----------------------------
+      // Existing user: add to list_members if not already there
+      // ----------------------------
+      const { error: memberError } = await supabaseAdmin
+        .from('list_members')
+        .insert([{ list_id: listId, user_id: existingUser.id, role: 'editor' }])
+        .onConflict(['list_id', 'user_id']); // prevent duplicates
 
+      if (memberError) console.error('Error adding existing user to list_members:', memberError);
+
+      // Send notification email
       await resend.emails.send({
         from: 'GrocLi <info@grocli.thijsterbeek.com>',
         to: email,
@@ -57,13 +78,25 @@ export default async function handler(req, res) {
         html: `<p>${inviterEmail} has added you to <strong>${listName}</strong>.</p>`,
       });
 
-      return res.status(200).json({ success: true, invited: 'existing' });
+      return res
+        .writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' })
+        .end(JSON.stringify({ success: true, invited: 'existing' }));
     }
 
-    // New user → send invite link
-    const appUrl = process.env.APP_URL || 'http://localhost:5173';
-    const inviteLink = `${appUrl}/login?invite=${inviteId}&email=${encodeURIComponent(email)}`;
+    // ----------------------------
+    // New user: create an invite in list_invites table
+    // ----------------------------
+    const { data: inviteData, error: inviteError } = await supabaseAdmin
+      .from('list_invites')
+      .insert([{ list_id: listId, email, role: 'editor' }])
+      .select()
+      .single();
 
+    if (inviteError) throw inviteError;
+
+    const inviteLink = `${APP_URL}/login?invite=${inviteData.id}&email=${encodeURIComponent(email)}`;
+
+    // Send signup invite email
     await resend.emails.send({
       from: 'GrocLi <info@grocli.thijsterbeek.com>',
       to: email,
@@ -71,13 +104,17 @@ export default async function handler(req, res) {
       html: `
         <h2>You've been invited to join <strong>${listName}</strong></h2>
         <p>Invited by: ${inviterEmail}</p>
-        <p><a href="${inviteLink}">Join the list</a></p>
+        <p><a href="${inviteLink}">Click here to join</a></p>
       `,
     });
 
-    return res.status(200).json({ success: true, invited: 'new' });
+    return res
+      .writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' })
+      .end(JSON.stringify({ success: true, invited: 'new' }));
   } catch (error) {
     console.error('send-invite error:', error);
-    return res.status(500).json({ success: false, error: error.message });
+    return res
+      .writeHead(500, { ...corsHeaders, 'Content-Type': 'application/json' })
+      .end(JSON.stringify({ success: false, error: error.message }));
   }
 }

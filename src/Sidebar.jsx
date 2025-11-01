@@ -37,44 +37,23 @@ export default function Sidebar({ lists, setLists, currentList, setCurrentList, 
   }
 
 const handleShareList = async () => {
-  const email = prompt('Enter the email of the user to share this list with:');
-  if (!email) return;
+  const shareEmail = prompt('Enter the email of the user to share this list with:');
+  if (!shareEmail) return;
+
+  setLoading(true);
 
   try {
-    const inviteId = crypto.randomUUID();
-
-    // 1️⃣ Insert invite record in list_invites
-    const { data: inviteData, error: inviteError } = await supabase
-      .from('list_invites')
-      .insert([
-        {
-          id: inviteId,
-          list_id: currentList.id,
-          email,
-          role: 'editor',
-          created_at: new Date().toISOString(),
-        },
-      ])
-      .select()
-      .single();
-
-    if (inviteError) {
-      console.error('Failed to create invite:', inviteError);
-      return alert(`Failed to create invite: ${inviteError.message}`);
-    }
-
-    // 2️⃣ Call Vercel API to send email
     const user = (await supabase.auth.getUser()).data.user;
     const inviterEmail = user?.email;
 
+    // Call server-side API — server decides what to do
     const response = await fetch('https://legendary-octo-sniffle.vercel.app/api/send-invite', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        email,
-        listName: currentList.name,
-        inviteId: inviteData.id,
+        email: shareEmail,
         listId: currentList.id,
+        listName: currentList.name,
         inviterEmail,
       }),
     });
@@ -87,13 +66,16 @@ const handleShareList = async () => {
     }
 
     if (result.invited === 'existing') {
-      alert(`List shared with ${email} (existing user). They’ve been notified by email.`);
-    } else {
-      alert(`Invite email sent to ${email}. They can join via their signup link.`);
+      alert(`User already exists — they’ve been added to the list and notified.`);
+    } else if (result.invited === 'new') {
+      alert(`Invitation email sent to ${shareEmail}. They must sign up to join the list.`);
     }
+
   } catch (error) {
     console.error('Error sharing list:', error);
-    alert('Failed to share list. See console for details.');
+    alert(`Error sharing list: ${error.message}`);
+  } finally {
+    setLoading(false);
   }
 };
 
