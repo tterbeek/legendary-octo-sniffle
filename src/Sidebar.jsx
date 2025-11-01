@@ -37,24 +37,22 @@ export default function Sidebar({ lists, setLists, currentList, setCurrentList, 
   }
 
 const handleShareList = async () => {
-  const shareEmail = prompt('Enter the email of the user to share this list with:');
-  if (!shareEmail) return;
+  const email = shareEmail?.trim() || prompt('Enter the email of the user to share this list with:');
+  if (!email) return alert('Please enter an email to share with.');
 
   setLoading(true);
 
   try {
     const user = (await supabase.auth.getUser()).data.user;
-    const inviterEmail = user?.email;
 
-    // Call server-side API — server decides what to do
-    const response = await fetch('https://legendary-octo-sniffle.vercel.app/api/send-invite', {
+    const response = await fetch('/api/send-invite', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        email: shareEmail,
-        listId: currentList.id,
+        email,
         listName: currentList.name,
-        inviterEmail,
+        listId: currentList.id,
+        inviterEmail: user.email,
       }),
     });
 
@@ -66,14 +64,15 @@ const handleShareList = async () => {
     }
 
     if (result.invited === 'existing') {
-      alert(`User already exists — they’ve been added to the list and notified.`);
-    } else if (result.invited === 'new') {
-      alert(`Invitation email sent to ${shareEmail}. They must sign up to join the list.`);
+      alert(`User ${email} was added to the list and has been notified.`);
+    } else {
+      alert(`Invite email sent to ${email}. They can join via the signup link.`);
     }
 
-  } catch (error) {
-    console.error('Error sharing list:', error);
-    alert(`Error sharing list: ${error.message}`);
+    setShareEmail('');
+  } catch (err) {
+    console.error('Error sharing list:', err);
+    alert('Failed to share list. See console for details.');
   } finally {
     setLoading(false);
   }
