@@ -22,6 +22,7 @@ useEffect(() => {
     const userId = session.user.id
 
     try {
+    const fetchLists = async (attempt = 1) => {
       // Fetch owned lists
       const { data: ownedLists = [], error: ownedError } = await supabase
         .from('lists')
@@ -44,26 +45,37 @@ useEffect(() => {
         (list, index, self) => index === self.findIndex(l => l.id === list.id)
       )
 
+      // ⏳ Retry up to 5 times if no lists yet (for brand new users)
+      if (dedupedLists.length === 0 && attempt < 5) {
+        console.log(`No lists yet, retrying in 1s (attempt ${attempt})...`)
+        setTimeout(() => fetchLists(attempt + 1), 1000)
+        return
+      }
+
       setLists(dedupedLists)
 
       // Restore last used list from localStorage
-      const lastUsedId = localStorage.getItem('lastUsedListId');
-      let defaultList = dedupedLists.find(l => l.id === lastUsedId);
+      const lastUsedId = localStorage.getItem('lastUsedListId')
+      let defaultList = dedupedLists.find(l => l.id === lastUsedId)
 
-      // If no valid list in storage, pick the most recently updated one
+      // If no valid list in storage, pick most recently updated one
       if (!defaultList && dedupedLists.length > 0) {
         defaultList = dedupedLists.reduce((latest, l) => {
-          if (!latest) return l;
-          const latestDate = new Date(latest.updated_at || latest.created_at);
-          const currentDate = new Date(l.updated_at || l.created_at);
-          return currentDate > latestDate ? l : latest;
-        }, null);
+          if (!latest) return l
+          const latestDate = new Date(latest.updated_at || latest.created_at)
+          const currentDate = new Date(l.updated_at || l.created_at)
+          return currentDate > latestDate ? l : latest
+        }, null)
       }
 
       if (defaultList) {
-        setCurrentList(defaultList);
-        localStorage.setItem('lastUsedListId', defaultList.id);
+        setCurrentList(defaultList)
+        localStorage.setItem('lastUsedListId', defaultList.id)
       }
+    }
+
+    await fetchLists()
+
 
     } 
     
