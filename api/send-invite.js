@@ -60,16 +60,23 @@ export default async function handler(req, res) {
     const existingUser = usersData?.users?.[0];
 
     if (existingUser) {
-      // ----------------------------
-      // Existing user: add to list_members if not already there
-      // ----------------------------
-      const { error: memberError } = await supabaseAdmin
-        .from('list_members')
-        .upsert([{ list_id, user_id, role }], { onConflict: ['list_id', 'user_id'] });
+    // Add existing user to list_members
+        const { error: memberError } = await supabaseAdmin
+            .from('list_members')
+            .upsert(
+            [
+                {
+                list_id: listId,        // from request
+                user_id: existingUser.id, // from Supabase admin listUsers
+                role: 'editor',          // default role
+                },
+            ],
+            { onConflict: ['list_id', 'user_id'] }
+            );
 
+        if (memberError) console.error('Error adding existing user to list_members:', memberError);
 
-      if (memberError) console.error('Error adding existing user to list_members:', memberError);
-
+    
       // Send notification email
       await resend.emails.send({
         from: 'GrocLi <info@grocli.thijsterbeek.com>',
