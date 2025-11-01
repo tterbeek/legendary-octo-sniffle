@@ -22,64 +22,54 @@ useEffect(() => {
     const userId = session.user.id
 
     try {
-    const fetchLists = async (attempt = 1) => {
-      // Fetch owned lists
-      const { data: ownedLists = [], error: ownedError } = await supabase
-        .from('lists')
-        .select('*')
-        .eq('owner_id', userId)
-      if (ownedError) console.error('Error fetching owned lists:', ownedError)
+      const fetchLists = async (attempt = 1) => {
+        // Fetch owned lists
+        const { data: ownedLists = [], error: ownedError } = await supabase
+          .from('lists')
+          .select('*')
+          .eq('owner_id', userId)
+        if (ownedError) console.error('Error fetching owned lists:', ownedError)
 
-      // Fetch shared lists via list_members
-      const { data: sharedMemberships = [], error: sharedError } = await supabase
-        .from('list_members')
-        .select('lists(*)')
-        .eq('user_id', userId)
-      if (sharedError) console.error('Error fetching shared lists:', sharedError)
+        // Fetch shared lists via list_members
+        const { data: sharedMemberships = [], error: sharedError } = await supabase
+          .from('list_members')
+          .select('lists(*)')
+          .eq('user_id', userId)
+        if (sharedError) console.error('Error fetching shared lists:', sharedError)
 
-      const sharedLists = sharedMemberships.map(m => m.lists)
-      const combinedLists = [...ownedLists, ...sharedLists]
+        const sharedLists = sharedMemberships.map(m => m.lists)
+        const combinedLists = [...ownedLists, ...sharedLists]
 
-      // Deduplicate lists
-      const dedupedLists = combinedLists.filter(
-        (list, index, self) => index === self.findIndex(l => l.id === list.id)
-      )
+        // Deduplicate lists
+        const dedupedLists = combinedLists.filter(
+          (list, index, self) => index === self.findIndex(l => l.id === list.id)
+        )
 
-      // ⏳ Retry up to 5 times if no lists yet (for brand new users)
-      if (dedupedLists.length === 0 && attempt < 5) {
-        console.log(`No lists yet, retrying in 1s (attempt ${attempt})...`)
-        setTimeout(() => fetchLists(attempt + 1), 1000)
-        return
+        // ⏳ Retry up to 5 times if no lists yet (for brand new users)
+        if (dedupedLists.length === 0 && attempt < 5) {
+          console.log(`No lists yet, retrying in 1s (attempt ${attempt})...`)
+          setTimeout(() => fetchLists(attempt + 1), 1000)
+          return
+        }
+
+        setLists(dedupedLists)
+
+        // Restore last used list from localStorage
+        const lastUsedId = localStorage.getItem('lastUsedListId')
+        const defaultList =
+          dedupedLists.find(l => l.id === lastUsedId) ||
+          dedupedLists.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0]
+
+        if (defaultList) {
+          setCurrentList(defaultList)
+        } else {
+          console.log('No list found, opening sidebar for new user')
+          setSidebarOpen(true)
+        }
       }
 
-    setLists(dedupedLists)
-
-    // Restore last used list from localStorage
-    const lastUsedId = localStorage.getItem('lastUsedListId')
-    const defaultList = dedupedLists.find(l => l.id === lastUsedId) || dedupedLists[0]
-      if (defaultList) {
-        setCurrentList(defaultList)
-      } else {
-        console.log('No list found, opening sidebar for new user')
-        setSidebarOpen(true)
-      }
-
-
-    // If user has lists, select one
-    if (defaultList) {
-      setCurrentList(defaultList)
-    } else {
-      // 🟡 No lists at all — open sidebar so they can create one
-      setSidebarOpen(true)
-    }
-    }
-
-    await fetchLists()
-
-
-    } 
-    
-    catch (error) {
+      await fetchLists()
+    } catch (error) {
       console.error('Error initializing lists:', error)
     }
   }
@@ -143,7 +133,7 @@ useEffect(() => {
                 <p className="mb-4 text-gray-600">No list selected</p>
                 <button
                   onClick={() => setSidebarOpen(true)}
-                  className="px-4 py-2 bg-blue-600 text-white rounded shadow hover:bg-blue-700"
+                  className="px-4 py-2 customGreen text-white rounded shadow hover:bg-blue-700"
                 >
                   Create or Select a List
                 </button>
