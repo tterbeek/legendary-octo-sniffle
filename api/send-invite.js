@@ -51,9 +51,13 @@ export default async function handler(req, res) {
       per_page: 1,
     });
 
+    console.log('listUsers response:', usersData, 'error:', usersError);
+
     if (usersError) throw usersError;
 
     const existingUser = usersData?.users?.length > 0 ? usersData.users[0] : null;
+
+    console.log('existingUser:', existingUser);
 
     if (existingUser) {
       // ----------------------------
