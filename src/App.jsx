@@ -56,9 +56,14 @@ useEffect(() => {
 
     // Restore last used list from localStorage
     const lastUsedId = localStorage.getItem('lastUsedListId')
-    const defaultList =
-      dedupedLists.find(l => l.id === lastUsedId) ||
-      dedupedLists[0]
+    const defaultList = dedupedLists.find(l => l.id === lastUsedId) || dedupedLists[0]
+      if (defaultList) {
+        setCurrentList(defaultList)
+      } else {
+        console.log('No list found, opening sidebar for new user')
+        setSidebarOpen(true)
+      }
+
 
     // If user has lists, select one
     if (defaultList) {
@@ -134,8 +139,14 @@ useEffect(() => {
                 currentList={currentList}
               />
             ) : (
-              <div className="flex items-center justify-center min-h-screen">
-                No list selected
+              <div className="flex flex-col items-center justify-center min-h-screen">
+                <p className="mb-4 text-gray-600">No list selected</p>
+                <button
+                  onClick={() => setSidebarOpen(true)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded shadow hover:bg-blue-700"
+                >
+                  Create or Select a List
+                </button>
               </div>
             )
           }
