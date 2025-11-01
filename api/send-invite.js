@@ -46,7 +46,7 @@ export default async function handler(req, res) {
     // Check if the user exists via Supabase Admin v2
     // ----------------------------
     const { data: usersData, error: usersError } = await supabaseAdmin.auth.admin.listUsers({
-      filter: `email=eq.${email}`,
+      filter: `email=eq.${encodeURIComponent(email)}`,
       page: 0,
       per_page: 1,
     });
