@@ -45,21 +45,22 @@ export default async function handler(req, res) {
     // ----------------------------
     // Check if the user exists via Supabase Admin v2
     // ----------------------------
+    console.info('Checking if user exists for email:', email);
+
+    // fetch first 100 users or however many you need
     const { data: usersData, error: usersError } = await supabaseAdmin.auth.admin.listUsers({
-      filter: `email=eq.${encodeURIComponent(email)}`,
-      page: 0,
-      per_page: 1,
+    page: 0,
+    per_page: 100,
     });
-
-    console.log('listUsers response:', usersData, 'error:', usersError);
-    console.log('Checking if user exists for email:', email);
-
 
     if (usersError) throw usersError;
 
-    const existingUser = usersData?.users?.length > 0 ? usersData.users[0] : null;
+    console.info('listUsers response:', usersData, 'error:', usersError);
 
-    console.log('existingUser:', existingUser);
+    // manually find the user with the exact email
+    const existingUser = usersData?.users?.find(u => u.email?.toLowerCase() === email.toLowerCase()) || null;
+
+    console.info('existingUser:', existingUser);
 
     if (existingUser) {
       // ----------------------------
