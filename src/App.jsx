@@ -52,26 +52,21 @@ useEffect(() => {
         return
       }
 
-      setLists(dedupedLists)
+    setLists(dedupedLists)
 
-      // Restore last used list from localStorage
-      const lastUsedId = localStorage.getItem('lastUsedListId')
-      let defaultList = dedupedLists.find(l => l.id === lastUsedId)
+    // Restore last used list from localStorage
+    const lastUsedId = localStorage.getItem('lastUsedListId')
+    const defaultList =
+      dedupedLists.find(l => l.id === lastUsedId) ||
+      dedupedLists[0]
 
-      // If no valid list in storage, pick most recently updated one
-      if (!defaultList && dedupedLists.length > 0) {
-        defaultList = dedupedLists.reduce((latest, l) => {
-          if (!latest) return l
-          const latestDate = new Date(latest.updated_at || latest.created_at)
-          const currentDate = new Date(l.updated_at || l.created_at)
-          return currentDate > latestDate ? l : latest
-        }, null)
-      }
-
-      if (defaultList) {
-        setCurrentList(defaultList)
-        localStorage.setItem('lastUsedListId', defaultList.id)
-      }
+    // If user has lists, select one
+    if (defaultList) {
+      setCurrentList(defaultList)
+    } else {
+      // 🟡 No lists at all — open sidebar so they can create one
+      setSidebarOpen(true)
+    }
     }
 
     await fetchLists()
