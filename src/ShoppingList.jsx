@@ -122,7 +122,12 @@ export default function ShoppingList({ supabase, user, currentList }) {
 
     try {
       await supabase.from('items').insert([{ name, quantity: 1, list_id: currentList.id }])
-      await supabase.from('past_items').upsert([{ name, list_id: currentList.id }])
+      
+      // Upsert to past_items ensuring uniqueness per list
+      await supabase
+        .from('past_items')
+        .upsert([{ name, list_id: currentList.id }], { onConflict: ['list_id', 'name'] })
+
       setInput('')
       // No need to fetchItems(); realtime will update automatically
     } catch (err) {

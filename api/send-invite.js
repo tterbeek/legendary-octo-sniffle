@@ -1,3 +1,4 @@
+// api/send-invite.js
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 
@@ -29,13 +30,8 @@ const corsHeaders = {
 // ----------------------------
 export default async function handler(req, res) {
   // CORS preflight
-  if (req.method === 'OPTIONS') {
-    return res.writeHead(200, corsHeaders).end('OK');
-  }
-
-  if (req.method !== 'POST') {
-    return res.writeHead(405, corsHeaders).end('Method Not Allowed');
-  }
+  if (req.method === 'OPTIONS') return res.writeHead(200, corsHeaders).end('OK');
+  if (req.method !== 'POST') return res.writeHead(405, corsHeaders).end('Method Not Allowed');
 
   try {
     const { email, listId, listName, inviterEmail } = req.body || {};
@@ -47,7 +43,7 @@ export default async function handler(req, res) {
     }
 
     // ----------------------------
-    // Check if the user exists via Supabase Admin
+    // Check if the user exists via Supabase Admin v2
     // ----------------------------
     const { data: usersData, error: usersError } = await supabaseAdmin.auth.admin.listUsers({
       filter: `email=eq.${email}`,
@@ -57,26 +53,27 @@ export default async function handler(req, res) {
 
     if (usersError) throw usersError;
 
-    const existingUser = usersData?.users?.[0];
+    const existingUser = usersData?.users?.length > 0 ? usersData.users[0] : null;
 
     if (existingUser) {
-    // Add existing user to list_members
-        const { error: memberError } = await supabaseAdmin
-            .from('list_members')
-            .upsert(
-            [
-                {
-                list_id: listId,        // from request
-                user_id: existingUser.id, // from Supabase admin listUsers
-                role: 'editor',          // default role
-                },
-            ],
-            { onConflict: ['list_id', 'user_id'] }
-            );
+      // ----------------------------
+      // Existing user: add to list_members
+      // ----------------------------
+      const { error: memberError } = await supabaseAdmin
+        .from('list_members')
+        .upsert(
+          [
+            {
+              list_id: listId,
+              user_id: existingUser.id,
+              role: 'editor',
+            },
+          ],
+          { onConflict: ['list_id', 'user_id'] }
+        );
 
-        if (memberError) console.error('Error adding existing user to list_members:', memberError);
+      if (memberError) console.error('Error adding existing user to list_members:', memberError);
 
-    
       // Send notification email
       await resend.emails.send({
         from: 'GrocLi <info@grocli.thijsterbeek.com>',
@@ -87,7 +84,7 @@ export default async function handler(req, res) {
 
       return res
         .writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' })
-        .end(JSON.stringify({ success: true, invited: 'existing' }));
+        .end(JSON.stringify({ success: true, invited: 'existing', userId: existingUser.id }));
     }
 
     // ----------------------------
@@ -117,7 +114,8 @@ export default async function handler(req, res) {
 
     return res
       .writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' })
-      .end(JSON.stringify({ success: true, invited: 'new' }));
+      .end(JSON.stringify({ success: true, invited: 'new', inviteId: inviteData.id }));
+
   } catch (error) {
     console.error('send-invite error:', error);
     return res
