@@ -47,14 +47,27 @@ useEffect(() => {
       setLists(dedupedLists)
 
       // Restore last used list from localStorage
-      const lastUsedId = localStorage.getItem('lastUsedListId')
-      const defaultList = dedupedLists.find(l => l.id === lastUsedId) || dedupedLists[0]
-      if (defaultList) setCurrentList(defaultList)
+      const lastUsedId = localStorage.getItem('lastUsedListId');
+      let defaultList = dedupedLists.find(l => l.id === lastUsedId);
 
-      console.log('Owned lists:', ownedLists)
-      console.log('Shared lists:', sharedLists)
-      console.log('All lists:', dedupedLists)
-    } catch (error) {
+      // If no valid list in storage, pick the most recently updated one
+      if (!defaultList && dedupedLists.length > 0) {
+        defaultList = dedupedLists.reduce((latest, l) => {
+          if (!latest) return l;
+          const latestDate = new Date(latest.updated_at || latest.created_at);
+          const currentDate = new Date(l.updated_at || l.created_at);
+          return currentDate > latestDate ? l : latest;
+        }, null);
+      }
+
+      if (defaultList) {
+        setCurrentList(defaultList);
+        localStorage.setItem('lastUsedListId', defaultList.id);
+      }
+
+    } 
+    
+    catch (error) {
       console.error('Error initializing lists:', error)
     }
   }
