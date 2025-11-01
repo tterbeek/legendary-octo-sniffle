@@ -50,7 +50,7 @@ export default async function handler(req, res) {
     // fetch first 100 users or however many you need
     const { data: usersData, error: usersError } = await supabaseAdmin.auth.admin.listUsers({
     page: 0,
-    per_page: 100,
+    per_page: 1000,
     });
 
     if (usersError) throw usersError;
