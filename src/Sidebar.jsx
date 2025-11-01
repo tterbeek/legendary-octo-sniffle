@@ -37,7 +37,7 @@ export default function Sidebar({ lists, setLists, currentList, setCurrentList, 
   }
 
 const handleShareList = async () => {
-  const email = shareEmail?.trim() || prompt('Enter the email of the user to share this list with:');
+  const email = prompt('Enter the email of the user to share this list with:')?.trim();
   if (!email) return alert('Please enter an email to share with.');
 
   setLoading(true);
@@ -68,8 +68,6 @@ const handleShareList = async () => {
     } else {
       alert(`Invite email sent to ${email}. They can join via the signup link.`);
     }
-
-    setShareEmail('');
   } catch (err) {
     console.error('Error sharing list:', err);
     alert('Failed to share list. See console for details.');
