@@ -36,7 +36,8 @@ export default async function handler(req, res) {
     console.log('send-invite called:', { email, listName, inviteId, inviterEmail });
 
     // ✅ Check if user exists in Supabase Auth
-    const { data: existingUser, error } = await supabaseAdmin.auth.admin.getUserByEmail(email);
+    const { data: existingUser, error } = await supabaseAdmin.auth.getUserByEmail(email);
+    if (error) throw error;
 
 
     if (existingUser) {
