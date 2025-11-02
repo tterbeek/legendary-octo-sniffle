@@ -6,8 +6,12 @@ export default {
   theme: {
     extend: {
       colors: {
-        customGreen: '#578080',
-      },
+        customGreen: {
+          DEFAULT: '#578080',
+          hover: '#466666', // for hover state
+          dark: '#345555',
+  },
+}
     },
   },
   plugins: [],

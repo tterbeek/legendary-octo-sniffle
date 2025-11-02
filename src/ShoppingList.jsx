@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import FitText from './FitText'
 
 export default function ShoppingList({ supabase, user, currentList }) {
@@ -6,8 +6,12 @@ export default function ShoppingList({ supabase, user, currentList }) {
   const [input, setInput] = useState('')
   const [suggestions, setSuggestions] = useState([])
   const [activeItem, setActiveItem] = useState(null)
+  const touchTimerRef = useRef(null)
+  const touchThreshold = 800 // ms for long press
+  const suggestionTouchTimerRef = useRef(null)
+  const suggestionTouchThreshold = 800
 
-  let timer
+
 
   // -----------------------------
   // Fetch items and suggestions
@@ -15,9 +19,10 @@ export default function ShoppingList({ supabase, user, currentList }) {
   const fetchItems = async () => {
     if (!currentList) return
     const { data, error } = await supabase
-      .from('items')
+      .from('items_new')
       .select('*')
       .eq('list_id', currentList.id)
+      .eq('checked', false)
       .order('created_at', { ascending: true })
     if (error) console.error('Error fetching items:', error)
     else setItems(data || [])
@@ -26,87 +31,150 @@ export default function ShoppingList({ supabase, user, currentList }) {
   const fetchSuggestions = async () => {
     if (!currentList) return
     const { data, error } = await supabase
-      .from('past_items')
+      .from('items_new')
       .select('name, updated_at')
       .eq('list_id', currentList.id)
+      .eq('checked', true)
       .order('updated_at', { ascending: false })
     if (error) console.error('Error fetching suggestions:', error)
     else setSuggestions(data?.map(d => d.name) || [])
   }
 
   // -----------------------------
-  // Handle realtime updates
+  // Realtime subscription
   // -----------------------------
   useEffect(() => {
     if (!currentList) return
 
-    // Initial fetch
     fetchItems()
     fetchSuggestions()
 
-    // Items realtime channel
-    const channelItems = supabase
-      .channel(`items-changes-${currentList.id}`)
+    const channel = supabase
+      .channel(`items-new-changes-${currentList.id}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'items',
+          table: 'items_new',
           filter: `list_id=eq.${currentList.id}`
         },
         payload => {
+          const newItem = payload.new
+          const oldItem = payload.old
+
           if (payload.eventType === 'INSERT') {
-            setItems(prev => {
-              if (prev.some(i => i.id === payload.new.id)) return prev
-              return [...prev, payload.new].sort(
-                (a, b) => new Date(a.created_at) - new Date(b.created_at)
-              )
-            })
-          } else if (payload.eventType === 'DELETE') {
-            setItems(prev => prev.filter(i => i.id !== payload.old.id))
+            if (!newItem.checked) {
+              setItems(prev => {
+                if (prev.some(i => i.id === newItem.id)) return prev
+                return [...prev, newItem].sort(
+                  (a, b) => new Date(a.created_at) - new Date(b.created_at)
+                )
+              })
+            } else {
+              setSuggestions(prev => [newItem.name, ...prev.filter(s => s !== newItem.name)])
+            }
           } else if (payload.eventType === 'UPDATE') {
-            setItems(prev =>
-              prev
-                .map(i => (i.id === payload.new.id ? payload.new : i))
-                .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
-            )
+            if (newItem.checked) {
+              setItems(prev => prev.filter(i => i.id !== newItem.id))
+              setSuggestions(prev => [newItem.name, ...prev.filter(s => s !== newItem.name)])
+            } else {
+              setItems(prev =>
+                prev
+                  .map(i => (i.id === newItem.id ? newItem : i))
+                  .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+              )
+            }
+          } else if (payload.eventType === 'DELETE') {
+            setItems(prev => prev.filter(i => i.id !== oldItem.id))
+            setSuggestions(prev => prev.filter(s => s !== oldItem.name))
           }
         }
       )
       .subscribe()
 
-    // Past items (suggestions) realtime channel
-    const channelPast = supabase
-      .channel(`past-items-changes-${currentList.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'past_items',
-          filter: `list_id=eq.${currentList.id}`
-        },
-        payload => {
-          fetchSuggestions()
-        }
-      )
-      .subscribe()
-
     return () => {
-      supabase.removeChannel(channelItems)
-      supabase.removeChannel(channelPast)
+      supabase.removeChannel(channel)
     }
   }, [currentList])
 
+
+    const markItemChecked = async (item) => {
+      // Optimistic UI
+      setItems(prev => prev.filter(i => i.id !== item.id))
+      setSuggestions(prev => [item.name, ...prev.filter(s => s !== item.name)])
+
+      // Update database: mark checked and reset quantity
+      await supabase
+        .from('items_new')
+        .update({ checked: true, quantity: 1 })
+        .eq('id', item.id)
+    }
+
+
+
   // -----------------------------
-  // Long press handlers
+  // Touch handlers
   // -----------------------------
-  const handlePressStart = item => {
-    timer = setTimeout(() => setActiveItem(item), 800)
+  const handleTouchStart = item => {
+    touchTimerRef.current = setTimeout(() => {
+      setActiveItem(item)
+      touchTimerRef.current = null
+    }, touchThreshold)
   }
 
-  const handlePressEnd = () => clearTimeout(timer)
+    const handleTouchEnd = async (item) => {
+    if (touchTimerRef.current) {
+      clearTimeout(touchTimerRef.current)
+      touchTimerRef.current = null
+      await markItemChecked(item)
+      }
+    }
+
+  // Long press for delete
+const handleSuggestionTouchStart = name => {
+  suggestionTouchTimerRef.current = setTimeout(async () => {
+    if (window.confirm(`Delete "${name}" from suggestions?`)) {
+      await supabase
+        .from('items_new')
+        .update({ checked: false }) // optional: keep it checked = false
+        .eq('name', name)
+      setSuggestions(prev => prev.filter(s => s !== name))
+    }
+    suggestionTouchTimerRef.current = null
+  }, suggestionTouchThreshold)
+}
+
+const handleSuggestionTouchEnd = () => {
+  if (suggestionTouchTimerRef.current) {
+    clearTimeout(suggestionTouchTimerRef.current)
+    suggestionTouchTimerRef.current = null
+  }
+}
+
+
+
+
+  // -----------------------------
+  // Right-click handler (desktop)
+  // -----------------------------
+  const handleRightClick = (e, item) => {
+    e.preventDefault()
+    setActiveItem(item)
+  }
+
+  const handleSuggestionRightClick = async (e, name) => {
+    e.preventDefault()
+    if (window.confirm(`Delete "${name}" from suggestions?`)) {
+      await supabase
+        .from('items_new')
+        .update({ checked: false })
+        .eq('name', name)
+      setSuggestions(prev => prev.filter(s => s !== name))
+    }
+  }
+
+
 
   // -----------------------------
   // Add item
@@ -121,57 +189,61 @@ export default function ShoppingList({ supabase, user, currentList }) {
     }
 
     try {
-      await supabase.from('items').insert([{ name, quantity: 1, list_id: currentList.id }])
-      
-      // Upsert to past_items ensuring uniqueness per list
-      await supabase
-        .from('past_items')
-        .upsert([{ name, list_id: currentList.id }], { onConflict: ['list_id', 'name'] })
+      const { data: existing } = await supabase
+        .from('items_new')
+        .select('*')
+        .eq('list_id', currentList.id)
+        .ilike('name', name)
+        .maybeSingle()
+
+      if (existing) {
+        await supabase
+          .from('items_new')
+          .update({ checked: false })
+          .eq('id', existing.id)
+
+        setItems(prev => [...prev, { ...existing, checked: false }])
+      } else {
+        const { data: inserted } = await supabase
+          .from('items_new')
+          .insert([{ name, quantity: 1, list_id: currentList.id }])
+          .select()
+        if (inserted?.length) setItems(prev => [...prev, inserted[0]])
+      }
 
       setInput('')
-      // No need to fetchItems(); realtime will update automatically
     } catch (err) {
       console.error('Error adding item:', err)
     }
   }
 
-  // -----------------------------
-  // Filter suggestions dynamically
-  // -----------------------------
   const filteredSuggestions = suggestions.filter(
     s => s.toLowerCase().includes(input.toLowerCase()) && !items.some(i => i.name === s)
   )
 
   return (
-   <div className="min-h-screen bg-gray-50 flex flex-col items-center p-6">
-    <h1 className="text-2xl font-bold mb-4">
-      🛒 {currentList?.name || 'Shopping List'}
-    </h1>
-    <div className="w-full max-w-2xl bg-white shadow rounded-2xl p-4">
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center p-6">
+      <h1 className="text-2xl font-bold mb-4">
+        🛒 {currentList?.name || 'Shopping List'}
+      </h1>
+
+      <div className="w-full max-w-2xl bg-white shadow rounded-2xl p-4">
         {/* Shopping List Grid */}
         <ul className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 gap-2">
           {items.map(item => (
             <li
               key={item.id}
-              onClick={async () => {
-                // Remove from shopping list
-                setItems(prev => prev.filter(i => i.id !== item.id))
-                await supabase.from('items').delete().eq('id', item.id)
-                // Update suggestions
-                setSuggestions(prev => [item.name, ...prev.filter(s => s !== item.name)])
-                await supabase.from('past_items').upsert([{ name: item.name, list_id: currentList.id, updated_at: new Date().toISOString() }])
-              }}
-              onMouseDown={() => handlePressStart(item)}
-              onMouseUp={handlePressEnd}
-              onTouchStart={() => handlePressStart(item)}
-              onTouchEnd={handlePressEnd}
+              onContextMenu={e => handleRightClick(e, item)}
+              onTouchStart={() => handleTouchStart(item)}
+              onTouchEnd={() => handleTouchEnd(item)}
+              onTouchCancel={() => handleTouchEnd(item)}
+              onClick={() => markItemChecked(item)}  // quantity resets to 1
               className="relative bg-customGreen text-white font-semibold flex flex-col items-center justify-center h-24 rounded-lg cursor-pointer shadow hover:scale-105 transition-transform p-2 select-none"
-              style={{ WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}
             >
               {item.name.split(' ').map((word, i) => (
                 <FitText key={i} text={word} maxFont={20} minFont={10} padding={16} />
               ))}
-              {item.quantity > 1 && (
+              {item.quantity && item.quantity > 1 && (
                 <div className="absolute top-1 right-1 bg-white text-customGreen text-xs font-bold rounded-full px-2 py-0.5">
                   {item.quantity}
                 </div>
@@ -190,8 +262,19 @@ export default function ShoppingList({ supabase, user, currentList }) {
                   <button
                     key={num}
                     onClick={async () => {
-                      await supabase.from('items').update({ quantity: num }).eq('id', activeItem.id)
-                      setItems(prev => prev.map(i => (i.id === activeItem.id ? { ...i, quantity: num } : i)))
+                      // Optimistic UI: update local state immediately
+                      setItems(prev =>
+                        prev.map(i =>
+                          i.id === activeItem.id ? { ...i, quantity: num } : i
+                        )
+                      )
+
+                      // Update database
+                      await supabase
+                        .from('items_new')
+                        .update({ quantity: num })
+                        .eq('id', activeItem.id)
+
                       setActiveItem(null)
                     }}
                     className="bg-customGreen text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-customGreen/80"
@@ -199,6 +282,7 @@ export default function ShoppingList({ supabase, user, currentList }) {
                     {num}
                   </button>
                 ))}
+
               </div>
               <input
                 type="number"
@@ -209,8 +293,19 @@ export default function ShoppingList({ supabase, user, currentList }) {
                   if (e.key === 'Enter') {
                     const num = parseInt(e.target.value)
                     if (!isNaN(num) && num > 0) {
-                      await supabase.from('items').update({ quantity: num }).eq('id', activeItem.id)
-                      setItems(prev => prev.map(i => (i.id === activeItem.id ? { ...i, quantity: num } : i)))
+                      // Optimistic UI
+                      setItems(prev =>
+                        prev.map(i =>
+                          i.id === activeItem.id ? { ...i, quantity: num } : i
+                        )
+                      )
+
+                      // Update database
+                      await supabase
+                        .from('items_new')
+                        .update({ quantity: num })
+                        .eq('id', activeItem.id)
+
                       setActiveItem(null)
                     }
                   }
@@ -245,39 +340,24 @@ export default function ShoppingList({ supabase, user, currentList }) {
 
         {/* Suggestions Grid */}
         {filteredSuggestions.length > 0 && (
-          <ul className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 gap-2 mt-2">
-            {filteredSuggestions.map(name => {
-              let timer
-              const handlePressStart = e => {
-                e.preventDefault()
-                timer = setTimeout(async () => {
-                  if (window.confirm(`Delete "${name}" from suggestions?`)) {
-                    await supabase.from('past_items').delete().eq('name', name).eq('list_id', currentList.id)
-                    setSuggestions(prev => prev.filter(s => s !== name))
-                  }
-                }, 800)
-              }
-              const handlePressEnd = () => clearTimeout(timer)
+        <ul className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 gap-2 mt-2">
+          {filteredSuggestions.map(name => (
+            <li
+              key={name}
+              onClick={() => addItem(name)} // tap / left click adds to list
+              onContextMenu={e => handleSuggestionRightClick(e, name)} // desktop right-click
+              onTouchStart={() => handleSuggestionTouchStart(name)}  // touch long press
+              onTouchEnd={handleSuggestionTouchEnd}
+              onTouchCancel={handleSuggestionTouchEnd}
+              className="relative bg-gray-400 text-white font-semibold flex flex-col items-center justify-center h-20 rounded-lg cursor-pointer shadow hover:scale-105 transition-transform p-2 select-none"
+            >
+              {name.split(' ').map((word, i) => (
+                <FitText key={i} text={word} maxFont={18} minFont={10} padding={16} />
+              ))}
+            </li>
+          ))}
+        </ul>
 
-              return (
-                <li
-                  key={name}
-                  onMouseDown={handlePressStart}
-                  onMouseUp={handlePressEnd}
-                  onMouseLeave={handlePressEnd}
-                  onTouchStart={handlePressStart}
-                  onTouchEnd={handlePressEnd}
-                  onClick={async () => addItem(name)}
-                  className="relative bg-gray-400 text-white font-semibold flex flex-col items-center justify-center h-20 rounded-lg cursor-pointer shadow hover:scale-105 transition-transform p-2 select-none"
-                  style={{ WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}
-                >
-                  {name.split(' ').map((word, i) => (
-                    <FitText key={i} text={word} maxFont={18} minFont={10} padding={16} />
-                  ))}
-                </li>
-              )
-            })}
-          </ul>
         )}
       </div>
     </div>

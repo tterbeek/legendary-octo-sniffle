@@ -83,7 +83,7 @@ export default async function handler(req, res) {
 
       // Send notification email
       await resend.emails.send({
-        from: 'GrocLi <info@grocli.thijsterbeek.com>',
+        from: 'GrocLi <no-reply@app.grocli.net>',
         to: email,
         subject: `You've been added to ${listName}`,
         html: `<p>${inviterEmail} has added you to <strong>${listName}</strong>.</p>`,
@@ -109,7 +109,7 @@ export default async function handler(req, res) {
 
     // Send signup invite email
     await resend.emails.send({
-      from: 'GrocLi <info@grocli.thijsterbeek.com>',
+      from: 'GrocLi <no-reply@app.grocli.net>',
       to: email,
       subject: `You're invited to join ${listName}`,
       html: `

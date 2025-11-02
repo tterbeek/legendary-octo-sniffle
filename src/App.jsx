@@ -111,7 +111,8 @@ useEffect(() => {
       )}
 
       <button
-        className="fixed top-4 left-4 z-50 p-2 rounded bg-white shadow-md"
+        className={`fixed top-4 left-4 z-50 p-3 rounded text-xl transition-colors
+          ${sidebarOpen ? 'bg-white' : 'bg-gray-50'}`}
         onClick={() => setSidebarOpen(true)}
       >
         ☰
