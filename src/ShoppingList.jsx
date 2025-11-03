@@ -23,7 +23,7 @@ export default function ShoppingList({ supabase, user, currentList }) {
       .select('*')
       .eq('list_id', currentList.id)
       .eq('checked', false)
-      .order('created_at', { ascending: true })
+      .order('updated_at', { ascending: true })
     if (error) console.error('Error fetching items:', error)
     else setItems(data || [])
   }
