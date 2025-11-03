@@ -77,17 +77,42 @@ export default function ShoppingList({ supabase, user, currentList }) {
     }, [currentList])
 
 
-    const markItemChecked = async (item) => {
-      await queueAction({
-        table: 'items_new',
-        type: 'update',
-        data: { checked: true, quantity: 1 },
-        match: { id: item.id }
-      })
-      setItems(prev => prev.filter(i => i.id !== item.id))
-    }
+ const markItemChecked = async (item) => {
+  try {
+    await queueAction({
+      table: 'items_new',
+      type: 'update',
+      data: { checked: true, quantity: 1, updated_at: new Date().toISOString() },
+      match: { id: item.id },
+    })
 
+    // ✅ Optimistic UI
+    setItems(prev => prev.filter(i => i.id !== item.id))
+    setSuggestions(prev => [item.name, ...prev.filter(s => s !== item.name)])
+  } catch (err) {
+    console.error('Error marking item checked:', err)
+    if (err.message !== 'Offline') alert('Could not mark item as checked.')
+  }
+}
 
+const updateItemQuantity = async (itemId, quantity) => {
+  try {
+    await queueAction({
+      table: 'items_new',
+      type: 'update',
+      data: { quantity, updated_at: new Date().toISOString() },
+      match: { id: itemId },
+    })
+
+    // ✅ Optimistic UI
+    setItems(prev =>
+      prev.map(i => (i.id === itemId ? { ...i, quantity } : i))
+    )
+  } catch (err) {
+    console.error('Error updating quantity:', err)
+    if (err.message !== 'Offline') alert('Could not update quantity.')
+  }
+}
 
 
   // -----------------------------
@@ -170,51 +195,66 @@ export default function ShoppingList({ supabase, user, currentList }) {
   // Add item
   // -----------------------------
     const addItem = async (name) => {
-    name = name.trim()
-    if (!name) return
+  name = name.trim()
+  if (!name) return
 
-    // Prevent duplicate names in the current list
-    if (items.some(i => i.name.toLowerCase() === name.toLowerCase())) {
-      alert(`"${name}" is already in your shopping list.`)
-      return
-    }
+  if (items.some(i => i.name.toLowerCase() === name.toLowerCase())) {
+    alert(`"${name}" is already in your shopping list.`)
+    return
+  }
 
-    try {
-      // Check if the item already exists (case-insensitive)
-      const { data: existing, error: fetchError } = await supabase
-        .from('items_new')
-        .select('*')
-        .eq('list_id', currentList.id)
-        .ilike('name', name)
-        .maybeSingle()
+  try {
+    const { data: existing, error } = await supabase
+      .from('items_new')
+      .select('*')
+      .eq('list_id', currentList.id)
+      .ilike('name', name)
+      .maybeSingle()
 
-      if (fetchError) throw fetchError
+    if (error) throw error
 
     if (existing) {
+      // ✅ Reactivate existing (was suggestion)
       await queueAction({
         table: 'items_new',
         type: 'update',
         data: { checked: false, updated_at: new Date().toISOString() },
-        match: { id: existing.id }
+        match: { id: existing.id },
       })
+
+      // Optimistic UI
+      setSuggestions(prev => prev.filter(s => s.toLowerCase() !== name.toLowerCase()))
+      setItems(prev => [
+        ...prev,
+        { ...existing, checked: false, updated_at: new Date().toISOString() },
+      ])
     } else {
+      // ✅ Create new
+      const tempId = crypto.randomUUID()
+      const newItem = {
+        id: tempId,
+        name,
+        quantity: 1,
+        checked: false,
+        list_id: currentList.id,
+        updated_at: new Date().toISOString(),
+      }
+
+      setItems(prev => [...prev, newItem]) // Optimistic
+
       await queueAction({
         table: 'items_new',
         type: 'insert',
-        data: [{ name, quantity: 1, list_id: currentList.id }]
+        data: [newItem],
       })
     }
-  
-    setItems(prev => [...prev, { id: crypto.randomUUID(), name, quantity: 1, checked: false }])
 
-
-      // Clear input — UI update will come from realtime
-      setInput('')
-    } catch (err) {
-      console.error('Error adding item:', err)
-      alert('Could not add item. Please try again.')
-    }
+    setInput('')
+  } catch (err) {
+    console.error('Error adding item:', err)
+    if (err.message !== 'Offline') alert('Could not add item. Please try again.')
   }
+}
 
 
   const filteredSuggestions = suggestions.filter(
@@ -269,23 +309,9 @@ export default function ShoppingList({ supabase, user, currentList }) {
               {[1, 2, 3, 4, 5].map(num => (
                 <button
                   key={num}
-                  onClick={async () => {
-                    try {
-                      await queueAction({
-                        table: 'items_new',
-                        type: 'update',
-                        data: { quantity: num },
-                        match: { id: activeItem.id },
-                      })
-                    } catch (err) {
-                      console.error('Error queuing quantity update:', err)
-                      alert('Could not update quantity.')
-                    } finally {
-                      setActiveItem(null)
-                    }
-                  setItems(prev => prev.map(i =>
-                  i.id === activeItem.id ? { ...i, quantity: num } : i
-                  ))
+                  onClick={() => {
+                    updateItemQuantity(activeItem.id, num)
+                    setActiveItem(null)
                   }}
                   className="bg-customGreen text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-customGreen/80"
                 >
@@ -301,24 +327,13 @@ export default function ShoppingList({ supabase, user, currentList }) {
               placeholder="Custom number"
               className="border rounded px-2 py-1 w-full mb-3"
               onKeyDown={async e => {
-                if (e.key === 'Enter') {
-                  const num = parseInt(e.target.value)
-                  if (!isNaN(num) && num > 0) {
-                    try {
-                      await queueAction({
-                        table: 'items_new',
-                        type: 'update',
-                        data: { quantity: num },
-                        match: { id: activeItem.id },
-                      })
-                    } catch (err) {
-                      console.error('Error queuing quantity update:', err)
-                      alert('Could not update quantity.')
-                    } finally {
-                      setActiveItem(null)
-                    }
-                  }
+              if (e.key === 'Enter') {
+                const num = parseInt(e.target.value)
+                if (!isNaN(num) && num > 0) {
+                  updateItemQuantity(activeItem.id, num)
+                  setActiveItem(null)
                 }
+              }
               }}
             />
 
