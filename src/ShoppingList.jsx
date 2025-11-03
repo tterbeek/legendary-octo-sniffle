@@ -43,73 +43,50 @@ export default function ShoppingList({ supabase, user, currentList }) {
   // -----------------------------
   // Realtime subscription
   // -----------------------------
-  useEffect(() => {
-    if (!currentList) return
+    useEffect(() => {
+      if (!currentList) return
 
-    fetchItems()
-    fetchSuggestions()
+      // Initial fetch
+      fetchItems()
+      fetchSuggestions()
 
-    const channel = supabase
-      .channel(`items-new-changes-${currentList.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'items_new',
-          filter: `list_id=eq.${currentList.id}`
-        },
-        payload => {
-          const newItem = payload.new
-          const oldItem = payload.old
-
-          if (payload.eventType === 'INSERT') {
-            if (!newItem.checked) {
-              setItems(prev => {
-                if (prev.some(i => i.id === newItem.id)) return prev
-                return [...prev, newItem].sort(
-                  (a, b) => new Date(a.created_at) - new Date(b.created_at)
-                )
-              })
-            } else {
-              setSuggestions(prev => [newItem.name, ...prev.filter(s => s !== newItem.name)])
-            }
-          } else if (payload.eventType === 'UPDATE') {
-            if (newItem.checked) {
-              setItems(prev => prev.filter(i => i.id !== newItem.id))
-              setSuggestions(prev => [newItem.name, ...prev.filter(s => s !== newItem.name)])
-            } else {
-              setItems(prev =>
-                prev
-                  .map(i => (i.id === newItem.id ? newItem : i))
-                  .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
-              )
-            }
-          } else if (payload.eventType === 'DELETE') {
-            setItems(prev => prev.filter(i => i.id !== oldItem.id))
-            setSuggestions(prev => prev.filter(s => s !== oldItem.name))
+      const channel = supabase
+        .channel(`items-new-changes-${currentList.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'items_new',
+            filter: `list_id=eq.${currentList.id}`,
+          },
+          async () => {
+            // Whenever any insert, update, or delete happens
+            // just re-fetch the data fresh from Supabase
+            await fetchItems()
+            await fetchSuggestions()
           }
-        }
-      )
-      .subscribe()
+        )
+        .subscribe()
 
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [currentList])
+      return () => {
+        supabase.removeChannel(channel)
+      }
+    }, [currentList])
 
 
     const markItemChecked = async (item) => {
-      // Optimistic UI
-      setItems(prev => prev.filter(i => i.id !== item.id))
-      setSuggestions(prev => [item.name, ...prev.filter(s => s !== item.name)])
-
-      // Update database: mark checked and reset quantity
-      await supabase
-        .from('items_new')
-        .update({ checked: true, quantity: 1 })
-        .eq('id', item.id)
+      try {
+        await supabase
+          .from('items_new')
+          .update({ checked: true, quantity: 1 })
+          .eq('id', item.id)
+      } catch (err) {
+        console.error('Error marking item checked:', err)
+        alert('Could not mark item as checked. Please try again.')
+      }
     }
+
 
 
 
@@ -179,43 +156,48 @@ const handleSuggestionTouchEnd = () => {
   // -----------------------------
   // Add item
   // -----------------------------
-  const addItem = async name => {
+    const addItem = async (name) => {
     name = name.trim()
     if (!name) return
 
+    // Prevent duplicate names in the current list
     if (items.some(i => i.name.toLowerCase() === name.toLowerCase())) {
       alert(`"${name}" is already in your shopping list.`)
       return
     }
 
     try {
-      const { data: existing } = await supabase
+      // Check if the item already exists (case-insensitive)
+      const { data: existing, error: fetchError } = await supabase
         .from('items_new')
         .select('*')
         .eq('list_id', currentList.id)
         .ilike('name', name)
         .maybeSingle()
 
+      if (fetchError) throw fetchError
+
       if (existing) {
+        // Reactivate (unchecked) an existing item instead of re-inserting
         await supabase
           .from('items_new')
-          .update({ checked: false })
+          .update({ checked: false, updated_at: new Date().toISOString() })
           .eq('id', existing.id)
-
-        setItems(prev => [...prev, { ...existing, checked: false }])
       } else {
-        const { data: inserted } = await supabase
+        // Insert a brand new item
+        await supabase
           .from('items_new')
           .insert([{ name, quantity: 1, list_id: currentList.id }])
-          .select()
-        if (inserted?.length) setItems(prev => [...prev, inserted[0]])
       }
 
+      // Clear input — UI update will come from realtime
       setInput('')
     } catch (err) {
       console.error('Error adding item:', err)
+      alert('Could not add item. Please try again.')
     }
   }
+
 
   const filteredSuggestions = suggestions.filter(
     s => s.toLowerCase().includes(input.toLowerCase()) && !items.some(i => i.name === s)
@@ -252,7 +234,7 @@ const handleSuggestionTouchEnd = () => {
           ))}
         </ul>
 
-        {/* Quantity Dialog */}
+ {/* Quantity Dialog */}
         {activeItem && (
           <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
             <div className="bg-white p-4 rounded-xl shadow-md w-64 text-center">
@@ -262,28 +244,25 @@ const handleSuggestionTouchEnd = () => {
                   <button
                     key={num}
                     onClick={async () => {
-                      // Optimistic UI: update local state immediately
-                      setItems(prev =>
-                        prev.map(i =>
-                          i.id === activeItem.id ? { ...i, quantity: num } : i
-                        )
-                      )
-
-                      // Update database
-                      await supabase
-                        .from('items_new')
-                        .update({ quantity: num })
-                        .eq('id', activeItem.id)
-
-                      setActiveItem(null)
+                      try {
+                        await supabase
+                          .from('items_new')
+                          .update({ quantity: num })
+                          .eq('id', activeItem.id)
+                      } catch (err) {
+                        console.error('Error updating quantity:', err)
+                        alert('Could not update quantity.')
+                      } finally {
+                        setActiveItem(null)
+                      }
                     }}
                     className="bg-customGreen text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-customGreen/80"
                   >
                     {num}
                   </button>
                 ))}
-
               </div>
+
               <input
                 type="number"
                 min="1"
@@ -293,24 +272,22 @@ const handleSuggestionTouchEnd = () => {
                   if (e.key === 'Enter') {
                     const num = parseInt(e.target.value)
                     if (!isNaN(num) && num > 0) {
-                      // Optimistic UI
-                      setItems(prev =>
-                        prev.map(i =>
-                          i.id === activeItem.id ? { ...i, quantity: num } : i
-                        )
-                      )
-
-                      // Update database
-                      await supabase
-                        .from('items_new')
-                        .update({ quantity: num })
-                        .eq('id', activeItem.id)
-
-                      setActiveItem(null)
+                      try {
+                        await supabase
+                          .from('items_new')
+                          .update({ quantity: num })
+                          .eq('id', activeItem.id)
+                      } catch (err) {
+                        console.error('Error updating quantity:', err)
+                        alert('Could not update quantity.')
+                      } finally {
+                        setActiveItem(null)
+                      }
                     }
                   }
                 }}
               />
+
               <button
                 onClick={() => setActiveItem(null)}
                 className="text-gray-500 underline text-sm"
@@ -320,6 +297,7 @@ const handleSuggestionTouchEnd = () => {
             </div>
           </div>
         )}
+
 
         {/* Add Item Input */}
         <div className="flex mt-4 mb-2">

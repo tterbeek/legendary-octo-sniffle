@@ -5,6 +5,9 @@ import ShoppingList from './ShoppingList.jsx'
 import AuthCallback from './AuthCallback.jsx'
 import Sidebar from './Sidebar.jsx'
 import { supabase } from './supabaseClient'
+import Signup from './Signup.jsx'
+import Privacy from './Privacy.jsx'
+import Terms from './Terms.jsx'
 
 export default function App() {
   const [session, setSession] = useState(undefined)
@@ -86,16 +89,26 @@ useEffect(() => {
   if (session === undefined)
     return <div className="flex items-center justify-center min-h-screen">Loading...</div>
 
-  if (!session)
-    return (
-      <BrowserRouter>
-        <Routes>
-          <Route path="/auth/callback" element={<AuthCallback />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="*" element={<Navigate to="/login" replace />} />
-        </Routes>
-      </BrowserRouter>
-    )
+ if (!session) {
+  return (
+    <BrowserRouter>
+      <Routes>
+        {/* Auth callback */}
+        <Route path="/auth/callback" element={<AuthCallback />} />
+
+        {/* Public pages */}
+        <Route path="/login" element={<Login onLogin={setSession} />} />
+        <Route path="/signup" element={<Signup onSignup={setSession} />} />
+        <Route path="/privacy" element={<Privacy />} />
+        <Route path="/terms" element={<Terms />} />
+
+        {/* Redirect all other paths to login */}
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    </BrowserRouter>
+  )
+}
+
 
   return (
     <BrowserRouter>
@@ -143,6 +156,9 @@ useEffect(() => {
           }
         />
         <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<Signup onSignup={setSession} />} />
+        <Route path="/privacy" element={<Privacy />} />
+        <Route path="/terms" element={<Terms />} />
       </Routes>
     </BrowserRouter>
   )
