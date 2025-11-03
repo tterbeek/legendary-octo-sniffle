@@ -78,50 +78,6 @@ export default function Login({ onLogin }) {
     console.log('[Auth] Logged in successfully:', session?.user?.email)
     onLogin?.(session)
 
-    // 3️⃣ Handle invite (if present)
-    try {
-      if (inviteId) {
-        console.log('[Invite] Found invite ID:', inviteId)
-
-        const { data: inviteData, error: inviteError } = await supabase
-          .from('list_invites')
-          .select('id, list_id, email, role')
-          .eq('id', inviteId)
-          .single()
-
-        if (inviteError) {
-          console.warn('[Invite] Error fetching invite:', inviteError.message)
-        } else if (
-          inviteData &&
-          inviteData.email.toLowerCase() === session.user.email.toLowerCase()
-        ) {
-          console.log('[Invite] Invite matched. Adding user to list:', inviteData.list_id)
-
-          const { error: memberError } = await supabase
-            .from('list_members')
-            .insert([
-              {
-                list_id: inviteData.list_id,
-                user_id: session.user.id,
-                role: inviteData.role || 'editor',
-              },
-            ])
-
-          if (memberError) console.error('[Invite] Error adding to list:', memberError)
-          else console.log('[Invite] User successfully added to list_members')
-
-          // Delete the invite so it can't be reused
-          await supabase.from('list_invites').delete().eq('id', inviteData.id)
-        } else {
-          console.warn('[Invite] No matching invite email or invite not found')
-        }
-      } else {
-        console.log('[Invite] No invite ID found in URL')
-      }
-    } catch (err) {
-      console.error('[Invite] Unexpected error:', err)
-    }
-
     // Redirect after login
     navigate('/')
   }

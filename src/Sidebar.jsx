@@ -260,7 +260,7 @@ export default function Sidebar({ lists, setLists, currentList, setCurrentList, 
       {/* Support the Developer */}
       <div className="mt-2">
         <button
-          className="w-full flex items-center justify-center gap-2 bg-customGreen text-white px-2 py-2 rounded hover:bg-yellow-600 transition-colors"
+          className="w-full flex items-center justify-center gap-2 bg-yellow-500 text-white px-2 py-2 rounded hover:bg-yellow-600 transition-colors"
           onClick={() => setShowSupportModal(true)}
         >
           ☕ Support the Developer

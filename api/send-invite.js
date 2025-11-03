@@ -85,8 +85,8 @@ export default async function handler(req, res) {
       await resend.emails.send({
         from: 'GrocLi <no-reply@app.grocli.net>',
         to: email,
-        subject: `You've been added to ${listName}`,
-        html: `<p>${inviterEmail} has added you to <strong>${listName}</strong>.</p>`,
+        subject: `GrocLi: You've been added to ${listName} grocery list`,
+        html: `<p>${inviterEmail} has added you to <strong>${listName}. Please login to GrocLi to see your new grocery list.</strong>.</p>`,
       });
 
       return res
@@ -105,16 +105,16 @@ export default async function handler(req, res) {
 
     if (inviteError) throw inviteError;
 
-    const inviteLink = `${APP_URL}/login?invite=${inviteData.id}&email=${encodeURIComponent(email)}`;
+    const inviteLink = `${APP_URL}/Signup?invite=${inviteData.id}&email=${encodeURIComponent(email)}`;
 
     // Send signup invite email
     await resend.emails.send({
       from: 'GrocLi <no-reply@app.grocli.net>',
       to: email,
-      subject: `You're invited to join ${listName}`,
+      subject: `GrocLi: You're invited to join ${listName}`,
       html: `
-        <h2>You've been invited to join <strong>${listName}</strong></h2>
-        <p>Invited by: ${inviterEmail}</p>
+        <h2>Hello, you've been invited to signup for GrocLi, the collaborative grocery list app.</h2>
+        <p>${inviterEmail} has shared with you <strong>${listName}</strong></p>
         <p><a href="${inviteLink}">Click here to join</a></p>
       `,
     });

@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import FitText from './FitText'
+import useOfflineQueue from './useOfflineQueue'
 
 export default function ShoppingList({ supabase, user, currentList }) {
   const [items, setItems] = useState([])
@@ -10,6 +11,7 @@ export default function ShoppingList({ supabase, user, currentList }) {
   const touchThreshold = 800 // ms for long press
   const suggestionTouchTimerRef = useRef(null)
   const suggestionTouchThreshold = 800
+  const { isOnline, queueAction } = useOfflineQueue(supabase)
 
 
 
@@ -76,15 +78,13 @@ export default function ShoppingList({ supabase, user, currentList }) {
 
 
     const markItemChecked = async (item) => {
-      try {
-        await supabase
-          .from('items_new')
-          .update({ checked: true, quantity: 1 })
-          .eq('id', item.id)
-      } catch (err) {
-        console.error('Error marking item checked:', err)
-        alert('Could not mark item as checked. Please try again.')
-      }
+      await queueAction({
+        table: 'items_new',
+        type: 'update',
+        data: { checked: true, quantity: 1 },
+        match: { id: item.id }
+      })
+      setItems(prev => prev.filter(i => i.id !== item.id))
     }
 
 
@@ -109,25 +109,38 @@ export default function ShoppingList({ supabase, user, currentList }) {
     }
 
   // Long press for delete
-const handleSuggestionTouchStart = name => {
-  suggestionTouchTimerRef.current = setTimeout(async () => {
-    if (window.confirm(`Delete "${name}" from suggestions?`)) {
-      await supabase
-        .from('items_new')
-        .update({ checked: false }) // optional: keep it checked = false
-        .eq('name', name)
-      setSuggestions(prev => prev.filter(s => s !== name))
-    }
-    suggestionTouchTimerRef.current = null
-  }, suggestionTouchThreshold)
-}
+      const handleSuggestionTouchStart = (name) => {
+        suggestionTouchTimerRef.current = setTimeout(async () => {
+          if (window.confirm(`Delete "${name}" from suggestions?`)) {
+            try {
+              // Queue the "uncheck" action instead of direct Supabase call
+              await queueAction({
+                table: 'items_new',
+                type: 'update',
+                data: { checked: false },
+                match: { name },
+              })
 
-const handleSuggestionTouchEnd = () => {
-  if (suggestionTouchTimerRef.current) {
-    clearTimeout(suggestionTouchTimerRef.current)
-    suggestionTouchTimerRef.current = null
-  }
-}
+              // Update UI immediately (optimistic for smooth UX)
+              setSuggestions((prev) => prev.filter((s) => s !== name))
+            } catch (err) {
+              console.error('Error queuing suggestion deletion:', err)
+              alert('Could not delete suggestion.')
+            } finally {
+              suggestionTouchTimerRef.current = null
+            }
+          } else {
+            suggestionTouchTimerRef.current = null
+          }
+        }, suggestionTouchThreshold)
+      }
+
+      const handleSuggestionTouchEnd = () => {
+        if (suggestionTouchTimerRef.current) {
+          clearTimeout(suggestionTouchTimerRef.current)
+          suggestionTouchTimerRef.current = null
+        }
+      }
 
 
 
@@ -177,18 +190,23 @@ const handleSuggestionTouchEnd = () => {
 
       if (fetchError) throw fetchError
 
-      if (existing) {
-        // Reactivate (unchecked) an existing item instead of re-inserting
-        await supabase
-          .from('items_new')
-          .update({ checked: false, updated_at: new Date().toISOString() })
-          .eq('id', existing.id)
-      } else {
-        // Insert a brand new item
-        await supabase
-          .from('items_new')
-          .insert([{ name, quantity: 1, list_id: currentList.id }])
-      }
+    if (existing) {
+      await queueAction({
+        table: 'items_new',
+        type: 'update',
+        data: { checked: false, updated_at: new Date().toISOString() },
+        match: { id: existing.id }
+      })
+    } else {
+      await queueAction({
+        table: 'items_new',
+        type: 'insert',
+        data: [{ name, quantity: 1, list_id: currentList.id }]
+      })
+    }
+  
+    setItems(prev => [...prev, { id: crypto.randomUUID(), name, quantity: 1, checked: false }])
+
 
       // Clear input — UI update will come from realtime
       setInput('')
@@ -205,6 +223,12 @@ const handleSuggestionTouchEnd = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center p-6">
+    {/* 🔌 Offline Banner */}
+    {!isOnline && (
+      <div className="fixed top-0 left-0 right-0 bg-yellow-200 text-center text-sm py-1 z-50 shadow">
+        ⚠️ Offline mode — changes will sync when back online
+      </div>
+    )}
       <h1 className="text-2xl font-bold mb-4">
         🛒 {currentList?.name || 'Shopping List'}
       </h1>
@@ -234,69 +258,80 @@ const handleSuggestionTouchEnd = () => {
           ))}
         </ul>
 
- {/* Quantity Dialog */}
-        {activeItem && (
-          <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
-            <div className="bg-white p-4 rounded-xl shadow-md w-64 text-center">
-              <h2 className="text-lg font-semibold mb-2">{activeItem.name}</h2>
-              <div className="flex justify-center gap-2 mb-2">
-                {[1, 2, 3, 4, 5].map(num => (
-                  <button
-                    key={num}
-                    onClick={async () => {
-                      try {
-                        await supabase
-                          .from('items_new')
-                          .update({ quantity: num })
-                          .eq('id', activeItem.id)
-                      } catch (err) {
-                        console.error('Error updating quantity:', err)
-                        alert('Could not update quantity.')
-                      } finally {
-                        setActiveItem(null)
-                      }
-                    }}
-                    className="bg-customGreen text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-customGreen/80"
-                  >
-                    {num}
-                  </button>
-                ))}
-              </div>
+      {/* Quantity Dialog */}
+      {activeItem && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+          <div className="bg-white p-4 rounded-xl shadow-md w-64 text-center">
+            <h2 className="text-lg font-semibold mb-2">{activeItem.name}</h2>
 
-              <input
-                type="number"
-                min="1"
-                placeholder="Custom number"
-                className="border rounded px-2 py-1 w-full mb-3"
-                onKeyDown={async e => {
-                  if (e.key === 'Enter') {
-                    const num = parseInt(e.target.value)
-                    if (!isNaN(num) && num > 0) {
-                      try {
-                        await supabase
-                          .from('items_new')
-                          .update({ quantity: num })
-                          .eq('id', activeItem.id)
-                      } catch (err) {
-                        console.error('Error updating quantity:', err)
-                        alert('Could not update quantity.')
-                      } finally {
-                        setActiveItem(null)
-                      }
+            {/* Quick Quantity Buttons */}
+            <div className="flex justify-center gap-2 mb-2">
+              {[1, 2, 3, 4, 5].map(num => (
+                <button
+                  key={num}
+                  onClick={async () => {
+                    try {
+                      await queueAction({
+                        table: 'items_new',
+                        type: 'update',
+                        data: { quantity: num },
+                        match: { id: activeItem.id },
+                      })
+                    } catch (err) {
+                      console.error('Error queuing quantity update:', err)
+                      alert('Could not update quantity.')
+                    } finally {
+                      setActiveItem(null)
+                    }
+                  setItems(prev => prev.map(i =>
+                  i.id === activeItem.id ? { ...i, quantity: num } : i
+                  ))
+                  }}
+                  className="bg-customGreen text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-customGreen/80"
+                >
+                  {num}
+                </button>
+              ))}
+            </div>
+
+            {/* Custom Quantity Input */}
+            <input
+              type="number"
+              min="1"
+              placeholder="Custom number"
+              className="border rounded px-2 py-1 w-full mb-3"
+              onKeyDown={async e => {
+                if (e.key === 'Enter') {
+                  const num = parseInt(e.target.value)
+                  if (!isNaN(num) && num > 0) {
+                    try {
+                      await queueAction({
+                        table: 'items_new',
+                        type: 'update',
+                        data: { quantity: num },
+                        match: { id: activeItem.id },
+                      })
+                    } catch (err) {
+                      console.error('Error queuing quantity update:', err)
+                      alert('Could not update quantity.')
+                    } finally {
+                      setActiveItem(null)
                     }
                   }
-                }}
-              />
+                }
+              }}
+            />
 
-              <button
-                onClick={() => setActiveItem(null)}
-                className="text-gray-500 underline text-sm"
-              >
-                Cancel
-              </button>
-            </div>
+            <button
+              onClick={() => setActiveItem(null)}
+              className="text-gray-500 underline text-sm"
+            >
+              Cancel
+            </button>
           </div>
-        )}
+        </div>
+      )}
+
 
 
         {/* Add Item Input */}
