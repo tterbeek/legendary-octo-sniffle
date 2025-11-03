@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import FitText from './FitText'
-import useOfflineQueue from './useOfflineQueue'
+import useOfflineQueue from './UseOfflineQueue.js'
 
 export default function ShoppingList({ supabase, user, currentList }) {
   const [items, setItems] = useState([])
