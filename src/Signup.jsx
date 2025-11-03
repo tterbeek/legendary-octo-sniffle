@@ -24,6 +24,8 @@ export default function Signup({ onSignup }) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
   }
 
+  const inviteId = new URLSearchParams(location.search).get('invite')
+  const inviteEmail = new URLSearchParams(location.search).get('email')
 
 
   // 1️⃣ Request OTP (token) for signup
@@ -94,6 +96,51 @@ export default function Signup({ onSignup }) {
       } catch (err) {
         console.error('[Signup] Unexpected error saving consent:', err)
       }
+
+
+// ✅ Handle invite if present in URL
+    if (inviteId) {
+      console.log('[Invite] Found invite ID:', inviteId)
+
+      try {
+        // Fetch invite data from the database
+        const { data: inviteData, error: inviteError } = await supabase
+          .from('list_invites')
+          .select('id, list_id, email, role')
+          .eq('id', inviteId)
+          .single()
+
+        if (inviteError) {
+          console.warn('[Invite] Error fetching invite:', inviteError.message)
+        } else if (inviteData && inviteData.email.toLowerCase() === session.user.email.toLowerCase()) {
+          console.log('[Invite] Invite matched. Adding user to list:', inviteData.list_id)
+
+          // Add the user to the list_members table
+          const { error: memberError } = await supabase
+            .from('list_members')
+            .insert([
+              {
+                list_id: inviteData.list_id,
+                user_id: session.user.id,
+                role: inviteData.role || 'editor',
+              },
+            ])
+
+          if (memberError) {
+            console.error('[Invite] Error adding to list:', memberError)
+          } else {
+            console.log('[Invite] User successfully added to list_members')
+          }
+
+          // Delete the invite so it can't be reused
+          await supabase.from('list_invites').delete().eq('id', inviteData.id)
+        } else {
+          console.warn('[Invite] No matching invite email or invite not found')
+        }
+      } catch (err) {
+        console.error('[Invite] Unexpected error:', err)
+      }
+    }
 
 
     // Redirect to main app (or fetch lists)
