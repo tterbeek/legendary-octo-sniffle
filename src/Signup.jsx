@@ -73,6 +73,29 @@ export default function Signup({ onSignup }) {
     console.log('[Signup] Logged in successfully:', session?.user?.email)
     onSignup?.(session)
 
+    // ✅ Store consent record
+      try {
+        const userId = session.user.id
+        const { error: consentError } = await supabase.from('user_consents').insert([
+          {
+            user_id: userId,
+            accepted_privacy_policy: true,
+            accepted_terms: true,
+            privacy_policy_version: 'v1.0',
+            terms_version: 'v1.0',
+          },
+        ])
+
+        if (consentError) {
+          console.error('[Signup] Error saving consent:', consentError.message)
+        } else {
+          console.log('[Signup] Consent recorded for user:', userId)
+        }
+      } catch (err) {
+        console.error('[Signup] Unexpected error saving consent:', err)
+      }
+
+
     // Redirect to main app (or fetch lists)
     navigate('/')
   }

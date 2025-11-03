@@ -128,7 +128,7 @@ export default function Login({ onLogin }) {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50">
-      <h1 className="text-2xl mb-4">Login to Shared Shopping List</h1>
+      <h1 className="text-2xl mb-4">Login to GrocLi</h1>
 
       {!codeSent ? (
         <>

@@ -1,7 +1,7 @@
 {
   "name": "GrocLi",
   "short_name": "GrocLi",
-  "description": "A collaborative groceries list app",
+  "description": "A collaborative grocery lists app",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

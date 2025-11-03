@@ -1,6 +1,8 @@
 // src/Sidebar.jsx
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from './supabaseClient'
+import SupportModal from './SupportModal';
+
 
 export default function Sidebar({ lists, setLists, currentList, setCurrentList, session, closeSidebar }) {
   const [newListName, setNewListName] = useState('')
@@ -9,6 +11,8 @@ export default function Sidebar({ lists, setLists, currentList, setCurrentList, 
   
   const sidebarRef = useRef()
   const menuRefs = useRef({}) // stores refs for each list's context menu
+
+  const [showSupportModal, setShowSupportModal] = useState(false);
 
   // -----------------------------
   // Realtime subscription for lists
@@ -252,6 +256,21 @@ export default function Sidebar({ lists, setLists, currentList, setCurrentList, 
             <span className="text-xl font-bold">+</span> Create List
           </button>
         </div>
+
+      {/* Support the Developer */}
+      <div className="mt-2">
+        <button
+          className="w-full flex items-center justify-center gap-2 bg-customGreen text-white px-2 py-2 rounded hover:bg-yellow-600 transition-colors"
+          onClick={() => setShowSupportModal(true)}
+        >
+          ☕ Support the Developer
+        </button>
+      </div>
+
+      {showSupportModal && (
+        <SupportModal onClose={() => setShowSupportModal(false)} />
+      )}
+
     </div>
   )
 }
