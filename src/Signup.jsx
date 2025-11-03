@@ -79,7 +79,7 @@ export default function Signup({ onSignup }) {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50">
-      <h1 className="text-2xl mb-4">Sign Up for Shared Shopping List</h1>
+      <h1 className="text-2xl mb-4">Sign Up for GrocLi</h1>
 
       {!codeSent ? (
         <div className="flex flex-col items-center space-y-2">

@@ -9,9 +9,9 @@ export default defineConfig({
       registerType: 'autoUpdate',  // automatically update service worker
       includeAssets: ['favicon.svg'], // optional
       manifest: {
-        name: 'Shared Shopping List',
-        short_name: 'Shopping List',
-        description: 'A collaborative shopping list app',
+        name: 'GrocLi',
+        short_name: 'GrocLi',
+        description: 'A collaborative grocery lists app',
         theme_color: '#578080', // your custom green
         background_color: '#ffffff',
         display: 'standalone', // makes it a PWA
