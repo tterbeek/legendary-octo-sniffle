@@ -45,36 +45,66 @@ export default function ShoppingList({ supabase, user, currentList }) {
   // -----------------------------
   // Realtime subscription
   // -----------------------------
-    useEffect(() => {
-      if (!currentList) return
+useEffect(() => {
+  if (!currentList) return
 
-      // Initial fetch
-      fetchItems()
-      fetchSuggestions()
+  // Realtime channel creation
+  const createRealtimeChannel = () => {
+    const channel = supabase
+      .channel(`items-new-changes-${currentList.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'items_new',
+          filter: `list_id=eq.${currentList.id}`,
+        },
+        async () => {
+          await fetchItems()
+          await fetchSuggestions()
+        }
+      )
+      .subscribe()
 
-      const channel = supabase
-        .channel(`items-new-changes-${currentList.id}`)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'items_new',
-            filter: `list_id=eq.${currentList.id}`,
-          },
-          async () => {
-            // Whenever any insert, update, or delete happens
-            // just re-fetch the data fresh from Supabase
-            await fetchItems()
-            await fetchSuggestions()
-          }
-        )
-        .subscribe()
+    return channel
+  }
 
-      return () => {
-        supabase.removeChannel(channel)
-      }
-    }, [currentList])
+  // Function to handle online and offline states
+  const handleOnline = () => {
+    console.log('Online: Reconnecting Realtime...')
+    const channel = createRealtimeChannel() // Reconnect the channel when online
+    return channel
+  }
+
+  const handleOffline = () => {
+    console.log('Offline: Disconnecting Realtime...')
+    supabase.removeChannel(channel) // Remove the WebSocket channel when offline
+  }
+
+  // Initial fetch
+  fetchItems()
+  fetchSuggestions()
+
+  let channel
+  if (navigator.onLine) {
+    channel = createRealtimeChannel() // Create channel if online
+  } else {
+    handleOffline() // Handle initial offline state
+  }
+
+  // Listen for online/offline events
+  window.addEventListener('online', handleOnline)
+  window.addEventListener('offline', handleOffline)
+
+  return () => {
+    window.removeEventListener('online', handleOnline)
+    window.removeEventListener('offline', handleOffline)
+    if (channel) {
+      supabase.removeChannel(channel) // Cleanup when component is unmounted
+    }
+  }
+}, [currentList])
 
 
  const markItemChecked = async (item) => {
@@ -194,16 +224,40 @@ const updateItemQuantity = async (itemId, quantity) => {
   // -----------------------------
   // Add item
   // -----------------------------
-    const addItem = async (name) => {
+ const addItem = async (name) => {
   name = name.trim()
   if (!name) return
 
+  // Prevent duplicate items
   if (items.some(i => i.name.toLowerCase() === name.toLowerCase())) {
     alert(`"${name}" is already in your shopping list.`)
     return
   }
 
   try {
+    // If offline, immediately queue the action and return
+    if (!isOnline) {
+      const newItem = {
+        id: crypto.randomUUID(),
+        name,
+        quantity: 1,
+        checked: false,
+        list_id: currentList.id,
+        updated_at: new Date().toISOString(),
+      }
+      setItems(prev => [...prev, newItem]) // Optimistic UI
+
+      await queueAction({
+        table: 'items_new',
+        type: 'insert',
+        data: [newItem],
+      })
+
+      setInput('')
+      return
+    }
+
+    // Online: Proceed with normal behavior
     const { data: existing, error } = await supabase
       .from('items_new')
       .select('*')
@@ -214,7 +268,6 @@ const updateItemQuantity = async (itemId, quantity) => {
     if (error) throw error
 
     if (existing) {
-      // ✅ Reactivate existing (was suggestion)
       await queueAction({
         table: 'items_new',
         type: 'update',
@@ -222,14 +275,12 @@ const updateItemQuantity = async (itemId, quantity) => {
         match: { id: existing.id },
       })
 
-      // Optimistic UI
       setSuggestions(prev => prev.filter(s => s.toLowerCase() !== name.toLowerCase()))
       setItems(prev => [
         ...prev,
         { ...existing, checked: false, updated_at: new Date().toISOString() },
       ])
     } else {
-      // ✅ Create new
       const tempId = crypto.randomUUID()
       const newItem = {
         id: tempId,
@@ -240,7 +291,8 @@ const updateItemQuantity = async (itemId, quantity) => {
         updated_at: new Date().toISOString(),
       }
 
-      setItems(prev => [...prev, newItem]) // Optimistic
+      // Optimistic UI
+      setItems(prev => [...prev, newItem])
 
       await queueAction({
         table: 'items_new',
@@ -255,6 +307,8 @@ const updateItemQuantity = async (itemId, quantity) => {
     if (err.message !== 'Offline') alert('Could not add item. Please try again.')
   }
 }
+
+
 
 
   const filteredSuggestions = suggestions.filter(

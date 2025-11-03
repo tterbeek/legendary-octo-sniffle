@@ -17,9 +17,11 @@ export default function Sidebar({ lists, setLists, currentList, setCurrentList, 
   // -----------------------------
   // Realtime subscription for lists
   // -----------------------------
-  useEffect(() => {
-    if (!session?.user?.id) return
+ useEffect(() => {
+  if (!session?.user?.id) return
 
+  // Function to create a channel
+  const createRealtimeChannel = () => {
     const channel = supabase
       .channel(`user-lists-${session.user.id}`)
       .on(
@@ -28,7 +30,7 @@ export default function Sidebar({ lists, setLists, currentList, setCurrentList, 
           event: '*',
           schema: 'public',
           table: 'lists',
-          filter: `owner_id=eq.${session.user.id}`
+          filter: `owner_id=eq.${session.user.id}`,
         },
         payload => {
           const newList = payload.new
@@ -46,8 +48,41 @@ export default function Sidebar({ lists, setLists, currentList, setCurrentList, 
       )
       .subscribe()
 
-    return () => supabase.removeChannel(channel)
-  }, [session?.user?.id, currentList?.id])
+    return channel
+  }
+
+  // Function to handle online and offline states
+  const handleOnline = () => {
+    console.log('Online: Reconnecting Realtime...')
+    const channel = createRealtimeChannel() // Reconnect the channel when online
+    return channel
+  }
+
+  const handleOffline = () => {
+    console.log('Offline: Disconnecting Realtime...')
+    supabase.removeChannel(channel) // Remove the WebSocket channel when offline
+  }
+
+  // Initialize channel when online, or disconnect when offline
+  let channel
+  if (navigator.onLine) {
+    channel = createRealtimeChannel() // Create channel if online
+  } else {
+    handleOffline() // Handle initial offline state
+  }
+
+  // Listen for online/offline events
+  window.addEventListener('online', handleOnline)
+  window.addEventListener('offline', handleOffline)
+
+  return () => {
+    window.removeEventListener('online', handleOnline)
+    window.removeEventListener('offline', handleOffline)
+    if (channel) {
+      supabase.removeChannel(channel) // Cleanup channel on unmount
+    }
+  }
+}, [session?.user?.id, currentList?.id])
 
   // -----------------------------
   // Close sidebar if clicking outside
