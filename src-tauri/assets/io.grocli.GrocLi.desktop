@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=GrocLi
+Comment=Shared grocery and shopping lists
+Exec=grocli
+Terminal=false
+Type=Application
+Icon=io.grocli.GrocLi
+Categories=Utility;Office;
+StartupNotify=true
