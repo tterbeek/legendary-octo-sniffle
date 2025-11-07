@@ -24,3 +24,8 @@ dist-ssr
 *.sw?
 
 .env
+
+# Ignore build and vendor artifacts
+/vendor/
+/src-tauri/target/
+/*.tar.gz
