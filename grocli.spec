@@ -7,20 +7,17 @@ License:        MIT
 URL:            https://app.grocli.net
 Source0:        %{name}-%{version}.tar.gz
 
-BuildRequires:  rust-packaging
+BuildRequires:  rust
 BuildRequires:  cargo
 BuildRequires:  make
-BuildRequires:  desktop-file-utils
-BuildRequires:  gtk3
-BuildRequires:  libappindicator-gtk3
+BuildRequires:  gcc
+BuildRequires:  pkgconfig(gtk4)
 
 %description
-GrocLi makes shared shopping simple. Create grocery lists that sync instantly
-between household members. Check items off in real-time, stay coordinated,
-and avoid buying doubles. Perfect for families, partners, and roommates.
+GrocLi makes shared shopping simple. Create grocery lists that sync instantly between household members.
 
 %prep
-%autosetup -n %{name}-%{version}
+%setup -q -n %{name}-%{version}
 
 # Ensure cargo uses vendored crates (no network)
 mkdir -p .cargo
@@ -70,5 +67,5 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/io.grocli.GrocLi.desk
 %{_datadir}/metainfo/io.grocli.GrocLi.metainfo.xml
 
 %changelog
-* Thu Nov 07 2025 Thijs <info@grocli.net> 0.1.0-1
+* Thu Nov 07 2024 Thijs <info@grocli.net> - 0.1.0-1
 - Initial Fedora package for GrocLi

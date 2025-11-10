@@ -1,0 +1,32 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "GrocLi",
+  "version": "0.1.0",
+  "identifier": "io.grocli.GrocLi",
+
+  "build": {
+    "devUrl": "https://app.grocli.net",
+    "frontendDist": "https://app.grocli.net"
+  },
+
+  "app": {
+    "windows": [
+      {
+        "title": "GrocLi - Shared Shopping List App",
+        "width": 800,
+        "height": 600,
+        "resizable": true
+      }
+    ]
+  },
+
+  "bundle": {
+    "targets": ["msix"],
+    "icon": ["icons/icon.ico"],
+    "windows": {
+      "publisherDisplayName": "GrocLi",
+      "publisher": "CN=YOUR_PUBLISHER_ID",
+      "identityName": "io.grocli.GrocLi"
+    }
+  }
+}
