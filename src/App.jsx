@@ -8,108 +8,118 @@ import { supabase } from './supabaseClient'
 import Signup from './Signup.jsx'
 import Privacy from './Privacy.jsx'
 import Terms from './Terms.jsx'
+import GrocLiLogoAnimation from './GrocLiLogoAnimation'
 
 export default function App() {
   const [session, setSession] = useState(undefined)
   const [lists, setLists] = useState([])
   const [currentList, setCurrentList] = useState(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [showLogo, setShowLogo] = useState(false);
 
 useEffect(() => {
-  const init = async () => {
-    // Get current session
-    const { data: { session } } = await supabase.auth.getSession()
-    setSession(session)
+  const today = new Date().toDateString(); // “Mon Nov 11 2025” format
+  const lastShown = localStorage.getItem('grocLiSplashDate');
 
-    if (!session?.user) return
-    const userId = session.user.id
+  // ✅ Only show if it hasn’t been shown today
+  if (!lastShown || Date.now() - lastShown > 6 * 60 * 60 * 1000) {
+    setShowLogo(true);
+    localStorage.setItem('grocLiSplashDate', today);
+  }
+}, []);
 
-    try {
-      const fetchLists = async (attempt = 1) => {
-        // Fetch owned lists
-        const { data: ownedLists = [], error: ownedError } = await supabase
-          .from('lists')
-          .select('*')
-          .eq('owner_id', userId)
-        if (ownedError) console.error('Error fetching owned lists:', ownedError)
+  // --- SUPABASE SESSION + LIST LOADING ---
+  useEffect(() => {
+    const init = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      setSession(session)
 
-        // Fetch shared lists via list_members
-        const { data: sharedMemberships = [], error: sharedError } = await supabase
-          .from('list_members')
-          .select('lists(*)')
-          .eq('user_id', userId)
-        if (sharedError) console.error('Error fetching shared lists:', sharedError)
+      if (!session?.user) return
+      const userId = session.user.id
 
-        const sharedLists = sharedMemberships.map(m => m.lists)
-        const combinedLists = [...ownedLists, ...sharedLists]
+      try {
+        const fetchLists = async (attempt = 1) => {
+          const { data: ownedLists = [], error: ownedError } = await supabase
+            .from('lists')
+            .select('*')
+            .eq('owner_id', userId)
+          if (ownedError) console.error('Error fetching owned lists:', ownedError)
 
-        // Deduplicate lists
-        const dedupedLists = combinedLists.filter(
-          (list, index, self) => index === self.findIndex(l => l.id === list.id)
-        )
+          const { data: sharedMemberships = [], error: sharedError } = await supabase
+            .from('list_members')
+            .select('lists(*)')
+            .eq('user_id', userId)
+          if (sharedError) console.error('Error fetching shared lists:', sharedError)
 
-        // ⏳ Retry up to 5 times if no lists yet (for brand new users)
-        if (dedupedLists.length === 0 && attempt < 5) {
-          console.log(`No lists yet, retrying in 1s (attempt ${attempt})...`)
-          setTimeout(() => fetchLists(attempt + 1), 1000)
-          return
+          const sharedLists = sharedMemberships.map(m => m.lists)
+          const combinedLists = [...ownedLists, ...sharedLists]
+
+          const dedupedLists = combinedLists.filter(
+            (list, index, self) => index === self.findIndex(l => l.id === list.id)
+          )
+
+          if (dedupedLists.length === 0 && attempt < 5) {
+            console.log(`No lists yet, retrying in 1s (attempt ${attempt})...`)
+            setTimeout(() => fetchLists(attempt + 1), 1000)
+            return
+          }
+
+          setLists(dedupedLists)
+
+          const lastUsedId = localStorage.getItem('lastUsedListId')
+          const defaultList =
+            dedupedLists.find(l => l.id === lastUsedId) ||
+            dedupedLists.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0]
+
+          if (defaultList) {
+            setCurrentList(defaultList)
+          } else {
+            console.log('No list found, opening sidebar for new user')
+            setSidebarOpen(true)
+          }
         }
 
-        setLists(dedupedLists)
-
-        // Restore last used list from localStorage
-        const lastUsedId = localStorage.getItem('lastUsedListId')
-        const defaultList =
-          dedupedLists.find(l => l.id === lastUsedId) ||
-          dedupedLists.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0]
-
-        if (defaultList) {
-          setCurrentList(defaultList)
-        } else {
-          console.log('No list found, opening sidebar for new user')
-          setSidebarOpen(true)
-        }
+        await fetchLists()
+      } catch (error) {
+        console.error('Error initializing lists:', error)
       }
-
-      await fetchLists()
-    } catch (error) {
-      console.error('Error initializing lists:', error)
     }
+
+    init()
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, sess) => {
+      setSession(sess)
+    })
+    return () => listener.subscription.unsubscribe()
+  }, [])
+
+  // --- ✅ SPLASH SCREEN SHOWS BEFORE ANYTHING ELSE ---
+  if (showLogo) {
+    return <GrocLiLogoAnimation onFinish={() => setShowLogo(false)} />
   }
 
-  init()
-
-  const { data: listener } = supabase.auth.onAuthStateChange((_event, sess) => {
-    setSession(sess)
-  })
-  return () => listener.subscription.unsubscribe()
-}, [])
-
-
+  
+  // --- LOADING PLACEHOLDER ---
   if (session === undefined)
     return <div className="flex items-center justify-center min-h-screen">Loading...</div>
 
- if (!session) {
-  return (
-    <BrowserRouter>
-      <Routes>
-        {/* Auth callback */}
-        <Route path="/auth/callback" element={<AuthCallback />} />
+  // --- NO SESSION: AUTH PAGES ---
+  if (!session) {
+    return (
+      <BrowserRouter>
+        <Routes>
+          <Route path="/auth/callback" element={<AuthCallback />} />
+          <Route path="/login" element={<Login onLogin={setSession} />} />
+          <Route path="/signup" element={<Signup onSignup={setSession} />} />
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/terms" element={<Terms />} />
+          <Route path="*" element={<Navigate to="/login" replace />} />
+        </Routes>
+      </BrowserRouter>
+    )
+  }
 
-        {/* Public pages */}
-        <Route path="/login" element={<Login onLogin={setSession} />} />
-        <Route path="/signup" element={<Signup onSignup={setSession} />} />
-        <Route path="/privacy" element={<Privacy />} />
-        <Route path="/terms" element={<Terms />} />
-
-        {/* Redirect all other paths to login */}
-        <Route path="*" element={<Navigate to="/login" replace />} />
-      </Routes>
-    </BrowserRouter>
-  )
-}
-
-
+  // --- LOGGED IN VIEW ---
   return (
     <BrowserRouter>
       {sidebarOpen && (
@@ -124,8 +134,9 @@ useEffect(() => {
       )}
 
       <button
-        className={`fixed top-4 left-4 z-50 p-3 rounded text-xl transition-colors
-          ${sidebarOpen ? 'bg-white' : 'bg-gray-50'}`}
+        className={`fixed top-4 left-4 z-50 p-3 rounded text-xl transition-colors ${
+          sidebarOpen ? 'bg-white' : 'bg-gray-50'
+        }`}
         onClick={() => setSidebarOpen(true)}
       >
         ☰
@@ -147,7 +158,7 @@ useEffect(() => {
                 <p className="mb-4 text-gray-600">No list selected</p>
                 <button
                   onClick={() => setSidebarOpen(true)}
-                  className="px-4 py-2 bg-customGreen text-white rounded shadow hover:bg-blue-700"
+                  className="px-4 py-2 bg-[#578080] text-white rounded shadow hover:bg-[#466666]"
                 >
                   Create or Select a List
                 </button>

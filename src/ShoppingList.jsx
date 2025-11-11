@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import FitText from './FitText'
 import useOfflineQueue from './UseOfflineQueue.js'
+import CartHeader from './CartHeader';
 
 export default function ShoppingList({ supabase, user, currentList }) {
   const [items, setItems] = useState([])
@@ -323,9 +324,15 @@ const updateItemQuantity = async (itemId, quantity) => {
         ⚠️ Offline mode — changes will sync when back online
       </div>
     )}
-      <h1 className="text-2xl font-bold mb-4">
-        🛒 {currentList?.name || 'Shopping List'}
-      </h1>
+
+
+{/* Compact Header with Drive-In Cart pushing title */}
+<div className="flex items-center justify-center gap-2 overflow-hidden">
+  {/* Cart drives in from the left */}
+<CartHeader title={currentList?.name || 'Shopping List'} />
+
+</div>
+
 
       <div className="w-full max-w-2xl bg-white shadow rounded-2xl p-4">
         {/* Shopping List Grid */}
