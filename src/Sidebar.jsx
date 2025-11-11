@@ -219,11 +219,35 @@ export default function Sidebar({ lists, setLists, currentList, setCurrentList, 
           >
             <button
               className="text-left flex-1 py-1 rounded-l"
-              onClick={() => {
+              onClick={async () => {
                 setCurrentList(list)
                 localStorage.setItem('lastUsedListId', list.id)
                 closeSidebar()
+
+                try {
+                  // ✅ Upsert user consent safely
+                  const { error } = await supabase
+                    .from('user_consents')
+                    .upsert(
+                      {
+                        user_id: session.user.id,
+                        last_opened_list_id: list.id,
+                        // Explicitly set defaults for new users, but won't overwrite existing values
+                        accepted_privacy_policy: false,
+                        accepted_terms: false,
+                      },
+                      {
+                        onConflict: 'user_id',
+                        ignoreDuplicates: false, // overwrite last_opened_list_id if row exists
+                      }
+                    )
+                  if (error) console.error('Failed to upsert user_consents:', error)
+                } catch (err) {
+                  console.error('Failed to update or create user_consents row:', err)
+                }
               }}
+
+
             >
               {list.name}
             </button>
