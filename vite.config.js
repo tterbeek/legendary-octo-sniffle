@@ -7,7 +7,6 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',  // automatically update service worker
-      includeAssets: ['favicon.svg'], // optional
       manifest: {
         name: 'GrocLi',
         short_name: 'GrocLi',
@@ -19,18 +18,18 @@ export default defineConfig({
         start_url: '/',
         icons: [
           {
-            src: 'pwa-192x192.png', // put these in `public/`
+            src: '/icon-192x192-v2.png', // put these in `public/`
             sizes: '192x192',
             type: 'image/png'
           },
           {
-            src: 'pwa-512x512.png',
+            src: '/icon-512x512-v2.png',
             sizes: '512x512',
             type: 'image/png'
           },
           {
-            src: 'pwa-512x512.png',
-            sizes: '512x512',
+            src: '/maskable-icon-192x192-v2.png',
+            sizes: '192x192',
             type: 'image/png',
             purpose: 'any maskable'
           }
