@@ -1,8 +1,0 @@
-[{
-      "relation": ["delegate_permission/common.handle_all_urls"],
-      "target": {
-        "namespace": "android_app",
-        "package_name": "net.grocli.app.twa",
-        "sha256_cert_fingerprints": ["83:8D:36:24:03:A7:D9:35:6A:EE:98:C5:13:58:50:74:A1:CD:F2:8D:7E:B5:DE:F3:60:13:5D:CF:77:A9:F2:D2"]
-      }
-    }]
