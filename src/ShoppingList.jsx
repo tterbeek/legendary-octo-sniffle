@@ -164,32 +164,32 @@ const updateItemQuantity = async (itemId, quantity) => {
       }
     }
 
-  // Long press for delete
-      const handleSuggestionTouchStart = (name) => {
-        suggestionTouchTimerRef.current = setTimeout(async () => {
-          if (window.confirm(`Delete "${name}" from suggestions?`)) {
-            try {
-              // Queue the "uncheck" action instead of direct Supabase call
-              await queueAction({
-                table: 'items_new',
-                type: 'update',
-                data: { checked: false },
-                match: { name },
-              })
+    // Long press for deleting a suggestion permanently
+    const handleSuggestionTouchStart = (name) => {
+      suggestionTouchTimerRef.current = setTimeout(async () => {
+        if (window.confirm(`Delete "${name}" from suggestions permanently?`)) {
+          try {
+            // 🔥 Permanently delete all checked entries matching this name
+            await queueAction({
+              table: 'items_new',
+              type: 'delete',
+              match: { name, checked: true },
+            })
 
-              // Update UI immediately (optimistic for smooth UX)
-              setSuggestions((prev) => prev.filter((s) => s !== name))
-            } catch (err) {
-              console.error('Error queuing suggestion deletion:', err)
-              alert('Could not delete suggestion.')
-            } finally {
-              suggestionTouchTimerRef.current = null
-            }
-          } else {
+            // Optimistically remove from UI
+            setSuggestions((prev) => prev.filter((s) => s !== name))
+          } catch (err) {
+            console.error('Error deleting suggestion:', err)
+            alert('Could not delete suggestion.')
+          } finally {
             suggestionTouchTimerRef.current = null
           }
-        }, suggestionTouchThreshold)
-      }
+        } else {
+          suggestionTouchTimerRef.current = null
+        }
+      }, suggestionTouchThreshold)
+    }
+
 
       const handleSuggestionTouchEnd = () => {
         if (suggestionTouchTimerRef.current) {
@@ -214,8 +214,9 @@ const updateItemQuantity = async (itemId, quantity) => {
     if (window.confirm(`Delete "${name}" from suggestions?`)) {
       await supabase
         .from('items_new')
-        .update({ checked: false })
+        .delete()
         .eq('name', name)
+        .eq('checked', true)
       setSuggestions(prev => prev.filter(s => s !== name))
     }
   }
