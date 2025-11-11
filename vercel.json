@@ -1,8 +1,4 @@
 {
-  "rewrites": [
-    { "source": "/.well-known/(.*)", "destination": "/.well-known/$1" },
-    { "source": "/(.*)", "destination": "/" }
-  ],
   "headers": [
     {
       "source": "/manifest.webmanifest",
@@ -23,6 +19,16 @@
       "headers": [
         { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
       ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/.well-known/(.*)",
+      "destination": "/public/.well-known/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/"
     }
   ]
 }
