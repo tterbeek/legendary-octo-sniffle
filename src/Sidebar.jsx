@@ -37,7 +37,13 @@ export default function Sidebar({ lists, setLists, currentList, setCurrentList, 
           const oldList = payload.old
 
           if (payload.eventType === 'INSERT') {
-            setLists(prev => prev.some(l => l.id === newList.id) ? prev : [...prev, newList])
+            setTimeout(() => {
+              setLists(prev => {
+                const exists = prev.some(l => l.id === newList.id)
+                if (exists) return prev
+                return [newList, ...prev]
+              })
+            }, 50) // short debounce
           } else if (payload.eventType === 'UPDATE') {
             setLists(prev => prev.map(l => l.id === newList.id ? newList : l))
           } else if (payload.eventType === 'DELETE') {
@@ -227,37 +233,39 @@ export default function Sidebar({ lists, setLists, currentList, setCurrentList, 
             <button
               className="text-left flex-1 py-1 rounded-l"
               onClick={async () => {
+                // ✅ 1. Optimistically switch UI
                 setCurrentList(list)
-                localStorage.setItem('lastUsedListId', list.id)
                 closeSidebar()
 
+                // ✅ 2. Save locally for next app load (even offline)
                 try {
-                  // ✅ Upsert user consent safely
+                  localStorage.setItem('lastUsedListId', list.id)
+                } catch {
+                  console.warn('localStorage unavailable')
+                }
+
+                // ✅ 3. Update on server (for cross-device sync)
+                try {
                   const { error } = await supabase
                     .from('user_consents')
                     .upsert(
                       {
                         user_id: session.user.id,
                         last_opened_list_id: list.id,
-                        // Explicitly set defaults for new users, but won't overwrite existing values
-                        accepted_privacy_policy: false,
-                        accepted_terms: false,
                       },
-                      {
-                        onConflict: 'user_id',
-                        ignoreDuplicates: false, // overwrite last_opened_list_id if row exists
-                      }
+                      { onConflict: 'user_id' }
                     )
-                  if (error) console.error('Failed to upsert user_consents:', error)
+
+                  if (error) console.error('Failed to update user_consents:', error)
                 } catch (err) {
-                  console.error('Failed to update or create user_consents row:', err)
+                  console.error('Error updating user_consents:', err)
                 }
+
               }}
-
-
             >
               {list.name}
             </button>
+
 
             {list.owner_id === session.user.id && (
               <div className="relative">

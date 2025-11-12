@@ -48,13 +48,12 @@ useEffect(() => {
 }, [])
 
 // --- LIST LOADING WHEN SESSION IS READY ---
-// --- LIST LOADING WHEN SESSION IS READY ---
 useEffect(() => {
   if (!session?.user) return
   const userId = session.user.id
 
   const fetchLists = async () => {
-    setListsLoading(true) // ✅ Start loading lists
+    setListsLoading(true)
 
     // 1️⃣ Fetch owned lists
     const { data: ownedLists = [], error: ownedError } = await supabase
@@ -63,32 +62,21 @@ useEffect(() => {
       .eq('owner_id', userId)
     if (ownedError) console.error('Error fetching owned lists:', ownedError)
 
-    // 2️⃣ Fetch lists where user is a member (shared lists)
+    // 2️⃣ Fetch lists where user is a member
     const { data: sharedMemberships = [], error: sharedError } = await supabase
       .from('list_members')
       .select('lists(*)')
       .eq('user_id', userId)
     if (sharedError) console.error('Error fetching shared lists:', sharedError)
 
+    // 3️⃣ Combine & dedupe
     const sharedLists = sharedMemberships.map(m => m.lists)
-
-    // 3️⃣ Combine owned + shared lists
-    const combinedLists = [...ownedLists, ...sharedLists]
-
-    // 4️⃣ Remove duplicate lists by id
-    const dedupedLists = combinedLists.filter(
+    const dedupedLists = [...ownedLists, ...sharedLists].filter(
       (list, index, self) => list && index === self.findIndex(l => l.id === list.id)
     )
 
-    // 5️⃣ Sort lists by updated_at (fallback to created_at if missing)
-    const sortedLists = dedupedLists.sort((a, b) => {
-      const aTime = new Date(a.updated_at || a.created_at || 0).getTime()
-      const bTime = new Date(b.updated_at || b.created_at || 0).getTime()
-      return bTime - aTime
-    })
-
-    // 6️⃣ If user has no lists yet → open sidebar
-    if (sortedLists.length === 0) {
+    // 4️⃣ Handle empty state
+    if (dedupedLists.length === 0) {
       console.log('No lists found – opening sidebar for new user')
       setLists([])
       setCurrentList(null)
@@ -97,43 +85,59 @@ useEffect(() => {
       return
     }
 
-    // 7️⃣ Store sorted lists
+    // 5️⃣ Sort newest first
+    const sortedLists = dedupedLists.sort(
+      (a, b) =>
+        new Date(b.updated_at || b.created_at) -
+        new Date(a.updated_at || a.created_at)
+    )
     setLists(sortedLists)
 
-    // 8️⃣ Try to load last opened list from user_consents (and fallback to localStorage)
-    let preferredList = null
+    // 6️⃣ Try to restore last viewed list
+    let lastUsedId = null
     try {
-      const { data: consent } = await supabase
+      lastUsedId = localStorage.getItem('lastUsedListId')
+    } catch {
+      console.warn('localStorage unavailable')
+    }
+
+    // 🆕 Added: fetch from user_consents as remote fallback
+    let remoteLastUsedId = null
+    try {
+      const { data: consentData, error: consentError } = await supabase
         .from('user_consents')
         .select('last_opened_list_id')
         .eq('user_id', userId)
         .maybeSingle()
 
-      const lastOpenedId =
-        consent?.last_opened_list_id || localStorage.getItem('lastUsedListId')
-
-      if (lastOpenedId) {
-        preferredList = sortedLists.find(l => l.id === lastOpenedId) || null
+      if (!consentError && consentData?.last_opened_list_id) {
+        remoteLastUsedId = consentData.last_opened_list_id
       }
-    } catch (e) {
-      console.error('Error fetching last_opened_list_id from user_consents:', e)
+    } catch (err) {
+      console.error('Failed to fetch user_consents:', err)
     }
 
-    // 9️⃣ Choose the list to open: prefer last opened, else most recently updated
-    const defaultList = preferredList || sortedLists[0]
+    // 7️⃣ Determine which list to open
+    const lastUsedList =
+      sortedLists.find(l => l.id === remoteLastUsedId) ||
+      sortedLists.find(l => l.id === lastUsedId) ||
+      sortedLists[0]
 
-    // 🔟 Set current list + remember locally for offline fallback
-    if (defaultList) {
-      setCurrentList(defaultList)
-      localStorage.setItem('lastUsedListId', defaultList.id)
+    // 8️⃣ Apply
+    setCurrentList(lastUsedList)
+    if (lastUsedList) {
+      try {
+        localStorage.setItem('lastUsedListId', lastUsedList.id)
+      } catch {
+        console.warn('localStorage unavailable')
+      }
     }
 
-    setListsLoading(false) // ✅ Done loading
+    setListsLoading(false)
   }
 
   fetchLists()
 }, [session])
-
 
   // --- ✅ SPLASH SCREEN SHOWS BEFORE ANYTHING ELSE ---
   if (showLogo) {
