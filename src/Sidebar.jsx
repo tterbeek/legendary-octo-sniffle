@@ -117,26 +117,33 @@ export default function Sidebar({ lists, setLists, currentList, setCurrentList, 
   // Handlers: create, share, delete, rename
   // -----------------------------
   const handleCreateList = async () => {
-    const name = newListName.trim()
-    if (!name) return alert('Enter a list name')
+  const name = newListName.trim()
+  if (!name) return alert('Enter a list name')
 
-    const { data: listData, error: listError } = await supabase
-      .from('lists')
-      .insert([{ name, owner_id: session.user.id }])
-      .select()
-      .single()
-    if (listError) return alert(listError.message)
+  const { data: listData, error: listError } = await supabase
+    .from('lists')
+    .insert([{ name, owner_id: session.user.id }])
+    .select()
+    .single()
+  if (listError) return alert(listError.message)
 
-    const { error: memberError } = await supabase
-      .from('list_members')
-      .insert([{ list_id: listData.id, user_id: session.user.id, role: 'editor' }])
-    if (memberError) return alert(memberError.message)
+  // Add user as member (so shared permissions still work)
+  const { error: memberError } = await supabase
+    .from('list_members')
+    .insert([{ list_id: listData.id, user_id: session.user.id, role: 'editor' }])
+  if (memberError) return alert(memberError.message)
 
-    setLists(prev => [...prev, listData])
-    setCurrentList(listData)
-    setNewListName('')
-    closeSidebar()
-  }
+  // ✅ Deduplicate before updating state
+  setLists(prev => {
+    const exists = prev.some(l => l.id === listData.id)
+    return exists ? prev : [...prev, listData]
+  })
+
+  setCurrentList(listData)
+  setNewListName('')
+  closeSidebar()
+}
+
 
   const handleShareList = async (list) => {
     const email = prompt('Enter email to share this list:')?.trim()
