@@ -9,6 +9,7 @@ import Signup from './Signup.jsx'
 import Privacy from './Privacy.jsx'
 import Terms from './Terms.jsx'
 import GrocLiLogoAnimation from './GrocLiLogoAnimation'
+import GrocLiLogoStatic from './GrocLiLogoStatic'
 
 export default function App() {
   const [session, setSession] = useState(undefined)
@@ -20,13 +21,13 @@ export default function App() {
 
 
 useEffect(() => {
-  const today = new Date().toDateString(); // “Mon Nov 11 2025” format
-  const lastShown = localStorage.getItem('grocLiSplashDate');
+  const lastShown = parseInt(localStorage.getItem('grocLiSplashTime'), 10);
+  const FOUR_HOURS = 4 * 60 * 60 * 1000; // 4 hours in ms
 
-  // ✅ Only show if it hasn’t been shown today
-  if (!lastShown || Date.now() - lastShown > 6 * 60 * 60 * 1000) {
+  // ✅ Only show if never shown or it’s been more than 4 hours
+  if (!lastShown || Date.now() - lastShown > FOUR_HOURS) {
     setShowLogo(true);
-    localStorage.setItem('grocLiSplashDate', today);
+    localStorage.setItem('grocLiSplashTime', Date.now().toString());
   }
 }, []);
 
@@ -189,22 +190,19 @@ useEffect(() => {
   path="/"
   element={
     listsLoading ? (
-      // 🌀 Show logo and loading message while fetching lists
       <div className="flex flex-col items-center justify-center min-h-screen">
-        <GrocLiLogoAnimation onFinish={() => {}} />
+        <GrocLiLogoStatic />
         <p className="text-gray-500 mt-4">Loading your lists...</p>
       </div>
     ) : currentList ? (
-      // ✅ Show the list when ready
       <ShoppingList
         supabase={supabase}
         user={session.user}
         currentList={currentList}
       />
     ) : (
-      // 📭 No lists found → sidebar open + static logo
       <div className="flex flex-col items-center justify-center min-h-screen text-center">
-        <GrocLiLogoAnimation onFinish={() => {}} />
+        <GrocLiLogoStatic />
         <p className="text-gray-600 mt-4">No lists found — create one to get started!</p>
       </div>
     )
