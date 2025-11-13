@@ -38,35 +38,30 @@ export default function App() {
       const {
         data: { session: initialSession }
       } = await supabase.auth.getSession()
-// 🔥 Force refresh if token exists but session is null
-if (!initialSession) {
-  await supabase.auth.refreshSession()
-}
+
 
       if (mounted) setSession(initialSession ?? null)
     }
     init()
 
     const { data: listener } = supabase.auth.onAuthStateChange(
-      (event, data) => {
-        if (!mounted) return
+  (event, data) => {
+    if (!mounted) return
 
-        console.log('AUTH EVENT:', event)
+    console.log("AUTH EVENT:", event)
 
-        if (
-          event === 'INITIAL_SESSION' ||
-          event === 'TOKEN_REFRESHED' ||
-          event === 'SIGNED_IN' ||
-          event === 'USER_UPDATED'
-        ) {
-          setSession(data.session ?? null)
-        }
+    // Only update session when Supabase provides a real session
+    if (data.session) {
+      setSession(data.session)
+    }
 
-        if (event === 'SIGNED_OUT') {
-          setSession(null)
-        }
-      }
-    )
+    // Explicit logout handler
+    if (event === "SIGNED_OUT") {
+      setSession(null)
+    }
+  }
+)
+
 
     return () => {
       mounted = false
