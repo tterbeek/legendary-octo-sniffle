@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from './supabaseClient'
+import { supabaseLogin } from './supabaseLoginClient'
 
 
 export default function Login({ onLogin }) {
@@ -25,7 +26,7 @@ export default function Login({ onLogin }) {
         }
 
       setLoading(true)
-      const { error } = await supabase.auth.signInWithOtp({
+      const { error } = await supabaseLogin.auth.signInWithOtp({
         email,
         options: { shouldCreateUser: false }, // don't auto-create
       })
@@ -56,7 +57,7 @@ export default function Login({ onLogin }) {
     console.log('[Auth] Verifying OTP for:', email)
     setLoading(true)
 
-    const { data: sessionData, error } = await supabase.auth.verifyOtp({
+    const { data: sessionData, error } = await supabaseLogin.auth.verifyOtp({
       email,
       token: otp,
       type: 'email', // ✅ Correct for 6-digit code flow
@@ -70,8 +71,16 @@ export default function Login({ onLogin }) {
       return
     }
 
+    // Extract the session returned by verifyOtp
     const session = sessionData.session
+
+    // IMPORTANT: inject this session into the main client
+    // (ensures persistence + storage)
+    await supabase.auth.setSession(session)
+
     console.log('[Auth] Logged in successfully:', session?.user?.email)
+
+    // Update App state
     onLogin?.(session)
 
     // Redirect after login
