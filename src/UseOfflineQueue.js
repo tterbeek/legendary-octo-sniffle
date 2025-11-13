@@ -1,58 +1,27 @@
-import { useEffect, useState, useCallback } from "react";
+// src/useOfflineQueue.js
+import { useCallback, useEffect } from "react";
 import localforage from "localforage";
+import useOfflineStatus from "./useOfflineStatus";
 
 localforage.config({
-  name: "shoppinglist-offline-queue",
-  storeName: "supabaseActions",
+  name: "shoppinglist-offline",
+  storeName: "queuedActions",
 });
 
 export default function useOfflineQueue(supabase) {
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const isOnline = useOfflineStatus();
 
-  // -------------------------------------------------------
-  // 1️⃣ ONLINE DETECTION:
-  //    Browser events + WebView fallback heartbeat
-  // -------------------------------------------------------
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
-
-    // 🔥 Mobile WebView fallback:
-    // Tries to fetch Google's 204 endpoint.
-    const checkConnection = () => {
-      fetch("https://www.google.com/generate_204", { method: "HEAD" })
-        .then(() => setIsOnline(true))
-        .catch(() => setIsOnline(false));
-    };
-
-    // Check immediately and every 5 seconds
-    checkConnection();
-    const interval = setInterval(checkConnection, 5000);
-
-    return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
-      clearInterval(interval);
-    };
-  }, []);
-
-  // -------------------------------------------------------
-  // 2️⃣ FLUSH QUEUE WHEN ONLINE
-  // -------------------------------------------------------
+  // Flush queue when back online
   const flushQueue = useCallback(async () => {
-    const queued = (await localforage.getItem("queue")) || [];
-    if (!queued.length) return;
+    const queue = (await localforage.getItem("queue")) || [];
+    if (queue.length === 0) return;
 
-    console.log("📤 Flushing queued actions:", queued);
+    console.log("📤 Flushing offline queue:", queue);
 
     const remaining = [];
 
-    for (const action of queued) {
+    for (const action of queue) {
       const { table, type, data, match } = action;
-
       try {
         if (type === "insert") {
           await supabase.from(table).insert(data);
@@ -62,7 +31,7 @@ export default function useOfflineQueue(supabase) {
           await supabase.from(table).delete().match(match);
         }
       } catch (err) {
-        console.warn("⚠️ Failed to replay action → keeping in queue:", err);
+        console.warn("⚠ Supabase still failing, keeping in queue:", err);
         remaining.push(action);
       }
     }
@@ -70,28 +39,31 @@ export default function useOfflineQueue(supabase) {
     await localforage.setItem("queue", remaining);
   }, [supabase]);
 
+  // Try flushing when browser reports online
   useEffect(() => {
     if (isOnline) {
       flushQueue();
     }
   }, [isOnline, flushQueue]);
 
-  // -------------------------------------------------------
-  // 3️⃣ QUEUE ACTION (write-through)
-  // -------------------------------------------------------
+
+  // Main queueAction function
   const queueAction = useCallback(
     async ({ table, type, data, match }) => {
-      const enqueue = async () => {
-        const queued = (await localforage.getItem("queue")) || [];
-        queued.push({ table, type, data, match });
-        await localforage.setItem("queue", queued);
-        console.warn("📦 Queued action:", { table, type, data, match });
+      const addToQueue = async () => {
+        const q = (await localforage.getItem("queue")) || [];
+        q.push({ table, type, data, match });
+        await localforage.setItem("queue", q);
+        console.log("📦 Action queued:", { table, type, data, match });
       };
 
+      // If browser already reports offline → instantly queue
       if (!isOnline) {
-        return enqueue();
+        await addToQueue();
+        return;
       }
 
+      // Try doing it online
       try {
         if (type === "insert") {
           await supabase.from(table).insert(data);
@@ -101,17 +73,17 @@ export default function useOfflineQueue(supabase) {
           await supabase.from(table).delete().match(match);
         }
       } catch (err) {
-        console.error("❌ Supabase write failed → queuing:", err);
+        console.log("❌ Network/Supabase error, queueing:", err);
 
-        // If WebView silently dropped connection
-        if (!navigator.onLine || err.message === "Failed to fetch") {
-          setIsOnline(false);
+        // Only treat fetch/connection errors as offline
+        if (err.message.includes("Failed to fetch")) {
+          console.log("🔌 Switching to offline mode.");
         }
 
-        await enqueue();
+        await addToQueue();
       }
     },
-    [isOnline, supabase]
+    [supabase, isOnline]
   );
 
   return { isOnline, queueAction };
