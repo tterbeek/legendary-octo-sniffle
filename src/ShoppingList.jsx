@@ -250,21 +250,26 @@ const handleSuggestionTouchCancel = () => {
 
 
 
-  // -----------------------------
-  // Add item
-  // -----------------------------
- const addItem = async (name) => {
+// -----------------------------
+// Add item
+// -----------------------------
+const addItem = async (name) => {
   name = name.trim()
   if (!name) return
 
-  // Prevent duplicate items
+  // Prevent duplicate items currently in the list
   if (items.some(i => i.name.toLowerCase() === name.toLowerCase())) {
     alert(`"${name}" is already in your shopping list.`)
     return
   }
 
+  // ❗ Normalized timestamp once (reduces flicker)
+  const now = new Date().toISOString()
+
   try {
-    // If offline, immediately queue the action and return
+    // ==========================================
+    // 1️⃣ OFFLINE MODE — Optimistic Insert Only
+    // ==========================================
     if (!isOnline) {
       const newItem = {
         id: crypto.randomUUID(),
@@ -272,10 +277,13 @@ const handleSuggestionTouchCancel = () => {
         quantity: 1,
         checked: false,
         list_id: currentList.id,
-        updated_at: new Date().toISOString(),
+        updated_at: now,
       }
-      setItems(prev => [...prev, newItem]) // Optimistic UI
 
+      // Optimistic UI insert
+      setItems(prev => [...prev, newItem])
+
+      // Queue insert for sync
       await queueAction({
         table: 'items_new',
         type: 'insert',
@@ -286,7 +294,9 @@ const handleSuggestionTouchCancel = () => {
       return
     }
 
-    // Online: Proceed with normal behavior
+    // ==========================================
+    // 2️⃣ ONLINE — Check if item already exists as suggestion
+    // ==========================================
     const { data: existing, error } = await supabase
       .from('items_new')
       .select('*')
@@ -296,47 +306,63 @@ const handleSuggestionTouchCancel = () => {
 
     if (error) throw error
 
+    // ==========================================
+    // 3️⃣ Item exists but is checked → turn it back into active item
+    // ==========================================
     if (existing) {
+      // Queue update
       await queueAction({
         table: 'items_new',
         type: 'update',
-        data: { checked: false, updated_at: new Date().toISOString() },
+        data: { checked: false, updated_at: now },
         match: { id: existing.id },
       })
 
-      setSuggestions(prev => prev.filter(s => s.toLowerCase() !== name.toLowerCase()))
-      setItems(prev => [
-        ...prev,
-        { ...existing, checked: false, updated_at: new Date().toISOString() },
-      ])
-    } else {
-      const tempId = crypto.randomUUID()
-      const newItem = {
-        id: tempId,
-        name,
-        quantity: 1,
-        checked: false,
-        list_id: currentList.id,
-        updated_at: new Date().toISOString(),
-      }
+      // Optimistically remove from suggestions
+      setSuggestions(prev =>
+        prev.filter(s => s.toLowerCase() !== name.toLowerCase())
+      )
 
-      // Optimistic UI
-      setItems(prev => [...prev, newItem])
+      // ❗ IMPORTANT:
+      // Do NOT optimistic-insert this item when online.
+      // Realtime will deliver it cleanly → no flicker.
 
-      await queueAction({
-        table: 'items_new',
-        type: 'insert',
-        data: [newItem],
-      })
+      setInput('')
+      return
     }
 
+    // ==========================================
+    // 4️⃣ NEW ITEM — Insert normally
+    // ==========================================
+    const tempId = crypto.randomUUID()
+    const newItem = {
+      id: tempId,
+      name,
+      quantity: 1,
+      checked: false,
+      list_id: currentList.id,
+      updated_at: now,
+    }
+
+    // Optimistic UI
+    setItems(prev => [...prev, newItem])
+
+    // Queue insert to Supabase
+    await queueAction({
+      table: 'items_new',
+      type: 'insert',
+      data: [newItem],
+    })
+
     setInput('')
+
   } catch (err) {
     console.error('Error adding item:', err)
-    if (err.message !== 'Offline') alert('Could not add item. Please try again.')
+    if (err.message !== 'Offline') {
+      alert('Could not add item. Please try again.')
+    }
   }
 }
-
 
 
 
