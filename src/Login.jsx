@@ -1,10 +1,17 @@
 // src/Login.jsx
 import { useState } from 'react'
+<<<<<<< HEAD
+=======
+import { supabase } from './supabaseClient'
+>>>>>>> 47d7b6ab
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from './supabaseClient'
 
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 47d7b6ab
 export default function Login({ onLogin }) {
   const [email, setEmail] = useState('')
   const [otp, setOtp] = useState('')
