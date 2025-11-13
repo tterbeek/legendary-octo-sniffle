@@ -146,58 +146,85 @@ const updateItemQuantity = async (itemId, quantity) => {
 }
 
 
-  // -----------------------------
-  // Touch handlers
-  // -----------------------------
-  const handleTouchStart = item => {
-    touchTimerRef.current = setTimeout(() => {
-      setActiveItem(item)
-      touchTimerRef.current = null
-    }, touchThreshold)
+ // -----------------------------
+// Touch handlers (items & suggestions)
+// -----------------------------
+
+const longPressTriggered = useRef(false)
+const suggestionLongPressTriggered = useRef(false)
+
+// --- ITEM TOUCH HANDLERS ---
+const handleTouchStart = (item) => {
+  longPressTriggered.current = false
+
+  touchTimerRef.current = setTimeout(() => {
+    longPressTriggered.current = true
+    setActiveItem(item) // open quantity modal
+  }, touchThreshold)
+}
+
+const handleTouchEnd = async (item) => {
+  if (touchTimerRef.current) {
+    clearTimeout(touchTimerRef.current)
+    touchTimerRef.current = null
   }
 
-    const handleTouchEnd = async (item) => {
-    if (touchTimerRef.current) {
-      clearTimeout(touchTimerRef.current)
-      touchTimerRef.current = null
-      await markItemChecked(item)
+  // 👇 If long press fired, DO NOT mark as checked
+  if (longPressTriggered.current) return
+
+  // Short tap → mark as checked
+  await markItemChecked(item)
+}
+
+
+// --- SUGGESTION TOUCH HANDLERS ---
+const handleSuggestionTouchStart = (name) => {
+  suggestionLongPressTriggered.current = false
+
+  suggestionTouchTimerRef.current = setTimeout(async () => {
+    suggestionLongPressTriggered.current = true
+
+    if (window.confirm(`Delete "${name}" from suggestions permanently?`)) {
+      try {
+        // delete all checked entries with that name
+        await queueAction({
+          table: 'items_new',
+          type: 'delete',
+          match: { name, checked: true },
+        })
+
+        // Optimistic UI
+        setSuggestions((prev) => prev.filter((s) => s !== name))
+      } catch (err) {
+        console.error('Error deleting suggestion:', err)
+        alert('Could not delete suggestion.')
       }
     }
 
-    // Long press for deleting a suggestion permanently
-    const handleSuggestionTouchStart = (name) => {
-      suggestionTouchTimerRef.current = setTimeout(async () => {
-        if (window.confirm(`Delete "${name}" from suggestions permanently?`)) {
-          try {
-            // 🔥 Permanently delete all checked entries matching this name
-            await queueAction({
-              table: 'items_new',
-              type: 'delete',
-              match: { name, checked: true },
-            })
+    suggestionTouchTimerRef.current = null
+  }, suggestionTouchThreshold)
+}
 
-            // Optimistically remove from UI
-            setSuggestions((prev) => prev.filter((s) => s !== name))
-          } catch (err) {
-            console.error('Error deleting suggestion:', err)
-            alert('Could not delete suggestion.')
-          } finally {
-            suggestionTouchTimerRef.current = null
-          }
-        } else {
-          suggestionTouchTimerRef.current = null
-        }
-      }, suggestionTouchThreshold)
-    }
+const handleSuggestionTouchEnd = (name) => {
+  if (suggestionTouchTimerRef.current) {
+    clearTimeout(suggestionTouchTimerRef.current)
+    suggestionTouchTimerRef.current = null
+  }
 
+  // If long press already handled → do nothing
+  if (suggestionLongPressTriggered.current) return
 
-      const handleSuggestionTouchEnd = () => {
-        if (suggestionTouchTimerRef.current) {
-          clearTimeout(suggestionTouchTimerRef.current)
-          suggestionTouchTimerRef.current = null
-        }
-      }
+  // Short tap → add item
+  addItem(name)
+}
 
+const handleSuggestionTouchCancel = () => {
+  if (suggestionTouchTimerRef.current) {
+    clearTimeout(suggestionTouchTimerRef.current)
+    suggestionTouchTimerRef.current = null
+  }
+  suggestionLongPressTriggered.current = false
+}
 
 
 
@@ -341,10 +368,10 @@ const updateItemQuantity = async (itemId, quantity) => {
           {items.map(item => (
             <li
               key={item.id}
-              onContextMenu={e => handleRightClick(e, item)}
               onTouchStart={() => handleTouchStart(item)}
               onTouchEnd={() => handleTouchEnd(item)}
               onTouchCancel={() => handleTouchEnd(item)}
+              onContextMenu={(e) => handleRightClick(e, item)}
               onClick={() => markItemChecked(item)}  // quantity resets to 1
               className="relative bg-customGreen text-white font-semibold flex flex-col items-center justify-center h-24 rounded-lg cursor-pointer shadow hover:scale-105 transition-transform p-2 select-none"
             >
@@ -435,10 +462,10 @@ const updateItemQuantity = async (itemId, quantity) => {
             <li
               key={name}
               onClick={() => addItem(name)} // tap / left click adds to list
-              onContextMenu={e => handleSuggestionRightClick(e, name)} // desktop right-click
-              onTouchStart={() => handleSuggestionTouchStart(name)}  // touch long press
-              onTouchEnd={handleSuggestionTouchEnd}
-              onTouchCancel={handleSuggestionTouchEnd}
+                onTouchStart={() => handleSuggestionTouchStart(name)}
+                onTouchEnd={() => handleSuggestionTouchEnd(name)}
+                onTouchCancel={handleSuggestionTouchCancel}
+                onContextMenu={(e) => handleSuggestionRightClick(e, name)}
               className="relative bg-gray-400 text-white font-semibold flex flex-col items-center justify-center h-20 rounded-lg cursor-pointer shadow hover:scale-105 transition-transform p-2 select-none"
             >
               {name.split(' ').map((word, i) => (
