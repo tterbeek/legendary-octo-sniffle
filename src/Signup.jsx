@@ -1,13 +1,7 @@
 // src/Signup.jsx
 import { useState } from 'react'
-import { createClient } from '@supabase/supabase-js'
-import { useNavigate } from 'react-router-dom'
-import { useLocation } from 'react-router-dom'
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-)
+import { useNavigate, useLocation } from 'react-router-dom'
+import { supabase } from './supabaseClient'   // ✅ use the global client
 
 export default function Signup({ onSignup }) {
   const location = useLocation()

@@ -1,12 +1,9 @@
 // src/Login.jsx
 import { useState } from 'react'
-import { createClient } from '@supabase/supabase-js'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { supabase } from './supabaseClient'
 
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-)
+
 
 export default function Login({ onLogin }) {
   const [email, setEmail] = useState('')
