@@ -12,7 +12,6 @@ import GrocLiLogoAnimation from './GrocLiLogoAnimation'
 import GrocLiLogoStatic from './GrocLiLogoStatic'
 
 export default function App() {
-  const [session, setSession] = useState(undefined)
   const [lists, setLists] = useState([])
   const [currentList, setCurrentList] = useState(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -31,21 +30,35 @@ useEffect(() => {
   }
 }, []);
 
-// --- SUPABASE SESSION HANDLING ---
+const [session, setSession] = useState(null)
+const [sessionLoaded, setSessionLoaded] = useState(false)
+
 useEffect(() => {
-  const setupAuth = async () => {
+  const init = async () => {
     const { data: { session } } = await supabase.auth.getSession()
     setSession(session)
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, sess) => {
-      setSession(sess)
-    })
-
-    return () => listener.subscription.unsubscribe()
+    setSessionLoaded(true)
   }
-
-  setupAuth()
+  init()
 }, [])
+
+
+useEffect(() => {
+  const { data: listener } = supabase.auth.onAuthStateChange((event, sess) => {
+
+    if (event === 'TOKEN_REFRESHED') {
+      // 👇 This FIXES the double-refresh problem
+      setSession(prev => ({ ...prev, ...sess }))
+      return
+    }
+
+    // for login/logout
+    setSession(sess)
+  })
+
+  return () => listener.subscription.unsubscribe()
+}, [])
+
 
 // --- LIST LOADING WHEN SESSION IS READY ---
 useEffect(() => {

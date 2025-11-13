@@ -10,79 +10,113 @@ localforage.config({
 export default function useOfflineQueue(supabase) {
   const [isOnline, setIsOnline] = useState(navigator.onLine)
 
-  // Listen to connection changes
+  // ----------------------------------------------------
+  // 1️⃣ Reliable online/offline detection
+  //    Combines browser events + WebView-safe heartbeat
+  // ----------------------------------------------------
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true)
-    const handleOffline = () => setIsOnline(false)
-    window.addEventListener('online', handleOnline)
-    window.addEventListener('offline', handleOffline)
+    const setOffline = () => setIsOnline(false)
+    const setOnline = () => setIsOnline(true)
+
+    window.addEventListener('online', setOnline)
+    window.addEventListener('offline', setOffline)
+
+    const heartbeat = async () => {
+      try {
+        // This URL is used by Android OS to check internet reachable
+        await fetch('https://www.google.com/generate_204', {
+          method: 'HEAD',
+          cache: 'no-cache'
+        })
+        setIsOnline(true)
+      } catch {
+        setIsOnline(false)
+      }
+    }
+
+    // Check connectivity immediately and every 8s
+    heartbeat()
+    const interval = setInterval(heartbeat, 8000)
+
     return () => {
-      window.removeEventListener('online', handleOnline)
-      window.removeEventListener('offline', handleOffline)
+      window.removeEventListener('online', setOnline)
+      window.removeEventListener('offline', setOffline)
+      clearInterval(interval)
     }
   }, [])
 
-  // Helper to flush queue
-const flushQueue = useCallback(async () => {
-  const queued = (await localforage.getItem('queue')) || []
-  if (!queued.length) return
+  // ----------------------------------------------------
+  // 2️⃣ Queue flusher
+  // ----------------------------------------------------
+  const flushQueue = useCallback(async () => {
+    const queued = (await localforage.getItem('queue')) || []
+    if (!queued.length) return
 
-  console.log('Flushing queued actions:', queued)
+    console.log('Flushing queued actions:', queued)
 
-  const remaining = []
-  for (const action of queued) {
-    try {
-      const { table, type, data, match } = action
-      if (type === 'insert') await supabase.from(table).insert(data)
-      else if (type === 'update') await supabase.from(table).update(data).match(match)
-      else if (type === 'delete') await supabase.from(table).delete().match(match)
-    } catch (err) {
-      console.error('Failed to replay action', action, err)
-      remaining.push(action)
+    const remaining = []
+    for (const action of queued) {
+      try {
+        const { table, type, data, match } = action
+
+        if (type === 'insert')
+          await supabase.from(table).insert(data)
+        else if (type === 'update')
+          await supabase.from(table).update(data).match(match)
+        else if (type === 'delete')
+          await supabase.from(table).delete().match(match)
+
+      } catch (err) {
+        console.warn('Failed to replay action, keeping in queue:', action, err)
+        remaining.push(action)
+      }
     }
-  }
 
-  await localforage.setItem('queue', remaining)
-}, [supabase])
+    await localforage.setItem('queue', remaining)
+  }, [supabase])
 
-  // Replay queued actions when back online
+  // ----------------------------------------------------
+  // 3️⃣ Flush queue when online
+  // ----------------------------------------------------
   useEffect(() => {
-    if (isOnline) flushQueue()
+    if (isOnline) {
+      console.log('Back online → flushing queue')
+      flushQueue()
+    }
   }, [isOnline, flushQueue])
 
-  // Main API to use in components
-const queueAction = useCallback(
-  async ({ table, type, data, match }) => {
-    if (!isOnline) {
-      // If offline, immediately queue the action
-      const queued = (await localforage.getItem('queue')) || []
-      queued.push({ table, type, data, match })
-      await localforage.setItem('queue', queued)
-      console.warn('Queuing action offline for later sync', { table, type, data })
-      return
-    }
+  // ----------------------------------------------------
+  // 4️⃣ queueAction API (write-through with fallback)
+  // ----------------------------------------------------
+  const queueAction = useCallback(
+    async ({ table, type, data, match }) => {
+      if (!isOnline) {
+        const queued = (await localforage.getItem('queue')) || []
+        queued.push({ table, type, data, match })
+        await localforage.setItem('queue', queued)
 
-    try {
-      console.log('Sending to Supabase:', { table, type, data, match })
-
-      // Perform actual Supabase operation
-      if (type === 'insert') {
-        await supabase.from(table).insert(data)
-      } else if (type === 'update') {
-        await supabase.from(table).update(data).match(match)
-      } else if (type === 'delete') {
-        await supabase.from(table).delete().match(match)
+        console.warn('Offline → action queued:', { table, type, data })
+        return
       }
-    } catch (err) {
-      console.error('Error during Supabase operation:', err)
-      const queued = (await localforage.getItem('queue')) || []
-      queued.push({ table, type, data, match })
-      await localforage.setItem('queue', queued)
-      console.warn('Queuing failed action for later sync', { table, type, data })
-    }
-  },
-  [isOnline, supabase]
-)
+
+      // We are online — try immediate Supabase call
+      try {
+        if (type === 'insert')
+          await supabase.from(table).insert(data)
+        else if (type === 'update')
+          await supabase.from(table).update(data).match(match)
+        else if (type === 'delete')
+          await supabase.from(table).delete().match(match)
+      } catch (err) {
+        // If call fails, queue it
+        console.error('Supabase call failed → queued:', err)
+        const queued = (await localforage.getItem('queue')) || []
+        queued.push({ table, type, data, match })
+        await localforage.setItem('queue', queued)
+      }
+    },
+    [isOnline, supabase]
+  )
 
   return { isOnline, queueAction }
 }
