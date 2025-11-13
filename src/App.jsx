@@ -10,7 +10,6 @@ import Privacy from './Privacy.jsx'
 import Terms from './Terms.jsx'
 import GrocLiLogoAnimation from './GrocLiLogoAnimation'
 import GrocLiLogoStatic from './GrocLiLogoStatic'
-
 export default function App() {
   const [session, setSession] = useState(undefined)
   const [lists, setLists] = useState([])
