@@ -1,6 +1,7 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import FitText from './FitText'
 import CartHeader from './CartHeader'
+import useLongPress from "./useLongPress"
 
 export default function ShoppingList({ supabase, user, currentList }) {
   const [items, setItems] = useState([])
@@ -9,18 +10,13 @@ export default function ShoppingList({ supabase, user, currentList }) {
   const [activeItem, setActiveItem] = useState(null)
   const [dbWarning, setDbWarning] = useState(false)
 
-  // Pointer detection + long press suppression
-  const pointerTypeRef = useRef("mouse")
-  const longPressDeleteRef = useRef(false)
+  // unified long-press handlers
+  const { bind: bindItem } = useLongPress()
+  const { bind: bindSuggestion } = useLongPress()
 
-  // Timers
-  const pressTimer = useRef(null)
-  const sugPressTimer = useRef(null)
-  const LONG = 800
-
-  // ---------------------------------------
-  // DB SLOW WARNING WRAPPER
-  // ---------------------------------------
+  // -------------------------------------------------
+  // DB slow warning wrapper
+  // -------------------------------------------------
   const runDb = async (promise) => {
     let timeoutId
 
@@ -34,15 +30,13 @@ export default function ShoppingList({ supabase, user, currentList }) {
     const result = await Promise.race([promise, slow])
 
     clearTimeout(timeoutId)
-
     if (result !== "slow") setDbWarning(false)
-
     return result
   }
 
-  // ---------------------------------------
-  // FETCH ITEMS
-  // ---------------------------------------
+  // -------------------------------------------------
+  // Fetch data
+  // -------------------------------------------------
   const fetchItems = async () => {
     if (!currentList) return
     const { data } = await supabase
@@ -51,13 +45,9 @@ export default function ShoppingList({ supabase, user, currentList }) {
       .eq('list_id', currentList.id)
       .eq('checked', false)
       .order('updated_at', { ascending: true })
-
     setItems(data || [])
   }
 
-  // ---------------------------------------
-  // FETCH SUGGESTIONS
-  // ---------------------------------------
   const fetchSuggestions = async () => {
     if (!currentList) return
     const { data } = await supabase
@@ -66,13 +56,12 @@ export default function ShoppingList({ supabase, user, currentList }) {
       .eq('list_id', currentList.id)
       .eq('checked', true)
       .order('updated_at', { ascending: false })
-
     setSuggestions(data || [])
   }
 
-  // ---------------------------------------
-  // REALTIME
-  // ---------------------------------------
+  // -------------------------------------------------
+  // Realtime
+  // -------------------------------------------------
   useEffect(() => {
     if (!currentList) return
 
@@ -101,13 +90,13 @@ export default function ShoppingList({ supabase, user, currentList }) {
     }
   }, [currentList])
 
-  // ---------------------------------------
-  // MARK CHECKED
-  // ---------------------------------------
+
+  // -------------------------------------------------
+  // Item actions
+  // -------------------------------------------------
   const markChecked = async (item) => {
     const now = new Date().toISOString()
 
-    // optimistic
     setItems(prev => prev.filter(i => i.id !== item.id))
     setSuggestions(prev => [
       { id: item.id, name: item.name },
@@ -122,16 +111,11 @@ export default function ShoppingList({ supabase, user, currentList }) {
     )
   }
 
-  // ---------------------------------------
-  // UPDATE QUANTITY
-  // ---------------------------------------
   const updateQuantity = async (itemId, quantity) => {
     const now = new Date().toISOString()
-
-    setItems(prev =>
-      prev.map(i => (i.id === itemId ? { ...i, quantity } : i))
-    )
-
+    setItems(prev => prev.map(i =>
+      i.id === itemId ? { ...i, quantity } : i
+    ))
     await runDb(
       supabase
         .from('items_new')
@@ -140,9 +124,6 @@ export default function ShoppingList({ supabase, user, currentList }) {
     )
   }
 
-  // ---------------------------------------
-  // ADD / RESTORE ITEM
-  // ---------------------------------------
   const addItem = async (name) => {
     name = name.trim()
     if (!name) return
@@ -161,7 +142,7 @@ export default function ShoppingList({ supabase, user, currentList }) {
     if (existing) {
       setSuggestions(prev => prev.filter(s => s.id !== existing.id))
 
-      const restoredItem = {
+      const restored = {
         id: existing.id,
         name,
         quantity: 1,
@@ -169,7 +150,7 @@ export default function ShoppingList({ supabase, user, currentList }) {
         list_id: currentList.id,
         updated_at: now,
       }
-      setItems(prev => [...prev, restoredItem])
+      setItems(prev => [...prev, restored])
 
       await runDb(
         supabase
@@ -202,67 +183,18 @@ export default function ShoppingList({ supabase, user, currentList }) {
     setInput('')
   }
 
-  // ---------------------------------------
-  // POINTER EVENTS — ITEMS
-  // ---------------------------------------
-  const onItemPointerDown = (item, e) => {
-    pointerTypeRef.current = e.pointerType
-    pressTimer.current = setTimeout(() => {
-      setActiveItem(item)
-    }, LONG)
-  }
-
-  const onItemPointerUp = (item) => {
-    clearTimeout(pressTimer.current)
-    if (activeItem?.id === item.id) return
-    markChecked(item)
-  }
-
-  // ---------------------------------------
-  // POINTER EVENTS — SUGGESTIONS
-  // ---------------------------------------
-  const onSugPointerDown = (s, e) => {
-    pointerTypeRef.current = e.pointerType
-
-    // Touch long-press → delete
-    if (e.pointerType === "touch") {
-      sugPressTimer.current = setTimeout(() => {
-        longPressDeleteRef.current = true
-
-        if (window.confirm(`Delete "${s.name}" from history?`)) {
-          runDb(
-            supabase.from("items_new").delete().eq("id", s.id)
-          )
-          setSuggestions(prev => prev.filter(x => x.id !== s.id))
-        }
-
-        setTimeout(() => {
-          longPressDeleteRef.current = false
-        }, 150)
-      }, LONG)
-    }
-  }
-
-  const onSugPointerUp = (s) => {
-    clearTimeout(sugPressTimer.current)
-
-    if (pointerTypeRef.current === "touch") {
-      addItem(s.name)
-    }
-  }
-
-  // ---------------------------------------
-  // FILTERED SUGGESTIONS
-  // ---------------------------------------
+  // -------------------------------------------------
+  // Filter suggestions
+  // -------------------------------------------------
   const filteredSuggestions = suggestions.filter(
     s =>
       s.name.toLowerCase().includes(input.toLowerCase()) &&
       !items.some(i => i.name === s.name)
   )
 
-  // ---------------------------------------
-  // RENDER
-  // ---------------------------------------
+  // -------------------------------------------------
+  // Render
+  // -------------------------------------------------
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center p-6">
 
@@ -283,12 +215,11 @@ export default function ShoppingList({ supabase, user, currentList }) {
           {items.map(item => (
             <li
               key={item.id}
-              onPointerDown={(e) => onItemPointerDown(item, e)}
-              onPointerUp={() => onItemPointerUp(item)}
-              onContextMenu={(e) => {
-                e.preventDefault()
-                setActiveItem(item)
-              }}
+              {...bindItem({
+                onLongPress: () => setActiveItem(item),
+                onTap: () => markChecked(item),
+                onRightClick: () => setActiveItem(item)
+              })}
               className="relative bg-customGreen text-white font-bold flex flex-col items-center justify-center h-24 rounded-lg shadow cursor-pointer select-none hover:scale-105 transition-transform"
             >
               {item.name.split(' ').map((w, i) => (
@@ -372,26 +303,21 @@ export default function ShoppingList({ supabase, user, currentList }) {
             {filteredSuggestions.map(s => (
               <li
                 key={s.id}
-                onPointerDown={(e) => onSugPointerDown(s, e)}
-                onPointerUp={() => onSugPointerUp(s)}
-                onContextMenu={(e) => {
-                  e.preventDefault()
-
-                  // If long-press already fired, suppress desktop delete
-                  if (longPressDeleteRef.current) {
-                    longPressDeleteRef.current = false
-                    return
+                {...bindSuggestion({
+                  onLongPress: () => {
+                    if (window.confirm(`Delete "${s.name}" from history?`)) {
+                      runDb(supabase.from("items_new").delete().eq("id", s.id))
+                      setSuggestions(prev => prev.filter(x => x.id !== s.id))
+                    }
+                  },
+                  onTap: () => addItem(s.name),
+                  onRightClick: () => {
+                    if (window.confirm(`Delete "${s.name}"?`)) {
+                      runDb(supabase.from("items_new").delete().eq("id", s.id))
+                      setSuggestions(prev => prev.filter(x => x.id !== s.id))
+                    }
                   }
-
-                  // Touch devices should ignore context menu
-                  if (pointerTypeRef.current === "touch") return
-
-                  // Desktop right-click delete
-                  if (window.confirm(`Delete "${s.name}"?`)) {
-                    runDb(supabase.from('items_new').delete().eq('id', s.id))
-                    setSuggestions(prev => prev.filter(x => x.id !== s.id))
-                  }
-                }}
+                })}
                 className="bg-gray-400 text-white font-semibold flex flex-col items-center justify-center h-20 rounded-lg shadow cursor-pointer select-none hover:scale-105 transition-transform"
               >
                 {s.name.split(' ').map((w, i) => (
