@@ -1,6 +1,6 @@
 import { useRef } from "react"
 
-export default function useLongPress(LONG = 800, MOVE = 10) {
+export default function useLongPress(LONG = 1200, MOVE = 10) {
   const pointerTypeRef = useRef("mouse")
   const startPosRef = useRef({ x: 0, y: 0 })
   const movedRef = useRef(false)
