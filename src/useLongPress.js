@@ -47,9 +47,9 @@ export default function useLongPress(LONG = 1200, MOVE = 10) {
       if (longPressFiredRef.current) return
 
       // tap
-      if (pointerTypeRef.current === "touch") {
+      //if (pointerTypeRef.current === "touch") {
         onTap?.()
-      }
+    //  }
     },
 
     onContextMenu: (e) => {
