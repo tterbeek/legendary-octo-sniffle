@@ -40,6 +40,11 @@ export default function useLongPress(LONG = 1200, MOVE = 10) {
       }
     },
 
+    onPointerCancel: () => {
+      movedRef.current = true
+      clearTimeout(timerRef.current)
+    },
+
     onPointerUp: () => {
       clearTimeout(timerRef.current)
 
