@@ -10,6 +10,7 @@ import Privacy from './Privacy.jsx'
 import Terms from './Terms.jsx'
 import GrocLiLogoAnimation from './GrocLiLogoAnimation'
 import GrocLiLogoStatic from './GrocLiLogoStatic'
+import SupportModal from './SupportModal'
 import ShareDialog from './ShareDialog'
 export default function App() {
   const [session, setSession] = useState(undefined)
@@ -21,6 +22,7 @@ export default function App() {
   const [shareTarget, setShareTarget] = useState(null)
   const [shareName, setShareName] = useState('')
   const [sharing, setSharing] = useState(false)
+  const [supportOpen, setSupportOpen] = useState(false)
 
   // Splashscreen
   const [showLogo, setShowLogo] = useState(false)
@@ -178,6 +180,39 @@ export default function App() {
     loadDisplayName()
   }, [session?.user?.id])
 
+  // Global support modal listener (for tooltips triggering it)
+  useEffect(() => {
+    const openSupport = () => {
+      setSupportOpen(true)
+      try {
+        localStorage.setItem('groc_support_opened', '1')
+        localStorage.removeItem('groc_support_pending')
+      } catch {}
+    }
+    window.addEventListener('open-support-modal', openSupport)
+
+    // If a pending flag exists, open once
+    try {
+      const pending = localStorage.getItem('groc_support_pending')
+      const opened = localStorage.getItem('groc_support_opened')
+      if (pending && !opened) {
+        openSupport()
+      }
+    } catch {}
+
+    return () => window.removeEventListener('open-support-modal', openSupport)
+  }, [])
+
+  const openSupportManually = () => {
+    setSupportOpen(true)
+    try {
+      localStorage.setItem('groc_support_opened', '1')
+      localStorage.removeItem('groc_support_pending')
+    } catch {}
+  }
+
+  const closeSupport = () => setSupportOpen(false)
+
   const openShareDialog = (list) => {
     if (!list) return
     setShareTarget(list)
@@ -270,17 +305,18 @@ export default function App() {
   return (
     <>
       <BrowserRouter>
-        {sidebarOpen && (
-          <Sidebar
-            lists={lists}
-            setLists={setLists}
-            currentList={currentList}
-            setCurrentList={setCurrentList}
-            session={session}
-            closeSidebar={() => setSidebarOpen(false)}
-            onShareList={openShareDialog}
-          />
-        )}
+      {sidebarOpen && (
+        <Sidebar
+          lists={lists}
+          setLists={setLists}
+          currentList={currentList}
+          setCurrentList={setCurrentList}
+          session={session}
+          closeSidebar={() => setSidebarOpen(false)}
+          onShareList={openShareDialog}
+          onOpenSupport={openSupportManually}
+        />
+      )}
 
         <button
           className={`fixed top-4 left-4 z-50 p-3 rounded text-xl transition-colors ${
@@ -306,10 +342,10 @@ export default function App() {
                 <ShoppingList
                   supabase={supabase}
                   user={session.user}
-                  currentList={currentList}
-                  onShareList={openShareDialog}
-                  shareLoading={sharing}
-                />
+                currentList={currentList}
+                onShareList={openShareDialog}
+                shareLoading={sharing}
+              />
               ) : (
                 <div className="flex flex-col items-center justify-center min-h-screen text-center">
                   <GrocLiLogoStatic />
@@ -335,6 +371,8 @@ export default function App() {
         onClose={closeShareDialog}
         onShare={handleShare}
       />
+
+      {supportOpen && <SupportModal onClose={closeSupport} />}
     </>
   )
 }

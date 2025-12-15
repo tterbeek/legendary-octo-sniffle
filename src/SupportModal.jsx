@@ -11,13 +11,12 @@ export default function SupportModal({ onClose }) {
           ✕
         </button>
 
-        <h2 className="text-xl font-semibold mb-3">Support the Developer</h2>
+        <h2 className="text-xl font-semibold mb-3">Enjoying GrocLi? ☺️</h2>
 
-        <p className="text-gray-700 mb-4">
-          GrocLi is built and maintained by one person — Thijs 💚
-          <br />
-          If you enjoy using GrocLi and want to help keep it running,
-          you can buy Thijs a coffee ☕
+        <p className="text-gray-700 mb-4 text-left">
+          If it’s made shopping a little easier, you can support the app by buying its maker, Thijs, a coffee ☕
+          <br /><br />
+          GrocLi is built and maintained by one person, and every coffee helps keep it running smoothly.
         </p>
 
         <a
@@ -27,11 +26,11 @@ export default function SupportModal({ onClose }) {
           className="inline-block bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg font-medium transition-colors"
           onClick={onClose}
         >
-          ☕ Buy Me a Coffee
+          ☕ Buy me a coffee
         </a>
 
-        <p className="text-xs text-gray-500 mt-4">
-          Donations are voluntary and go directly to Thijs to support GrocLi’s hosting and development.
+        <p className="text-xs text-gray-500 mt-4 text-left">
+          Totally optional — GrocLi will keep working either way.
         </p>
       </div>
     </div>

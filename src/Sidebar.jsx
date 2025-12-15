@@ -1,18 +1,16 @@
 // src/Sidebar.jsx
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from './supabaseClient'
-import SupportModal from './SupportModal';
 
 
-export default function Sidebar({ lists, setLists, currentList, setCurrentList, session, closeSidebar, onShareList }) {
+export default function Sidebar({ lists, setLists, currentList, setCurrentList, session, closeSidebar, onShareList, onOpenSupport }) {
   const [newListName, setNewListName] = useState('')
   const [loading, setLoading] = useState(false)
   const [activeMenu, setActiveMenu] = useState(null)
-  
+  const [showSupportModal, setShowSupportModal] = useState(false)
+
   const sidebarRef = useRef()
   const menuRefs = useRef({}) // stores refs for each list's context menu
-
-  const [showSupportModal, setShowSupportModal] = useState(false);
 
   // -----------------------------
   // Realtime subscription for lists
@@ -88,7 +86,7 @@ export default function Sidebar({ lists, setLists, currentList, setCurrentList, 
       supabase.removeChannel(channel) // Cleanup channel on unmount
     }
   }
-}, [session?.user?.id, currentList?.id])
+  }, [session?.user?.id, currentList?.id])
 
   // -----------------------------
   // Close sidebar if clicking outside
@@ -118,6 +116,12 @@ export default function Sidebar({ lists, setLists, currentList, setCurrentList, 
     document.addEventListener('mousedown', handleClickOutsideMenu)
     return () => document.removeEventListener('mousedown', handleClickOutsideMenu)
   }, [activeMenu])
+
+  useEffect(() => {
+    const handleSupportOpen = () => setShowSupportModal(true)
+    window.addEventListener('open-support-modal', handleSupportOpen)
+    return () => window.removeEventListener('open-support-modal', handleSupportOpen)
+  }, [])
 
   // -----------------------------
   // Handlers: create, share, delete, rename
@@ -311,19 +315,39 @@ export default function Sidebar({ lists, setLists, currentList, setCurrentList, 
           </button>
         </div>
 
+      {/* Share GrocLi */}
+      <div className="mt-2">
+        <button
+          className="w-full flex items-center justify-center gap-2 bg-gray-100 text-gray-800 px-2 py-2 rounded hover:bg-gray-200 transition-colors"
+          onClick={() => {
+            const shareData = {
+              title: 'GrocLi',
+              text: "I've been using GrocLi for shared shopping lists. It’s simple and works really well:",
+              url: 'https://www.grocli.net'
+            }
+
+            if (navigator.share) {
+              navigator.share(shareData).catch(() => {})
+            } else {
+              navigator.clipboard?.writeText(`${shareData.text} ${shareData.url}`)
+                .then(() => alert('Link copied to clipboard'))
+                .catch(() => alert('Could not share, please copy the link manually.'))
+            }
+          }}
+        >
+          Share GrocLi
+        </button>
+      </div>
+
       {/* Support the Developer */}
       <div className="mt-2">
         <button
           className="w-full flex items-center justify-center gap-2 bg-yellow-500 text-white px-2 py-2 rounded hover:bg-yellow-600 transition-colors"
-          onClick={() => setShowSupportModal(true)}
+          onClick={onOpenSupport}
         >
-          ☕ Support the Developer
+          ☕ Buy me a Coffee
         </button>
       </div>
-
-      {showSupportModal && (
-        <SupportModal onClose={() => setShowSupportModal(false)} />
-      )}
 
     </div>
   )

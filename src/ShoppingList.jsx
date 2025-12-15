@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import FitText from './FitText'
 import CartHeader from './CartHeader'
 import EditItemDialog from './EditItemDialog'
@@ -14,6 +14,21 @@ export default function ShoppingList({ supabase, user, currentList, onShareList,
   const [maxRecent, setMaxRecent] = useState(3)
   const [dbWarning, setDbWarning] = useState(false)
   const [memberCount, setMemberCount] = useState(null)
+  const [actionCount, setActionCount] = useState(0)
+  const [checkedCount, setCheckedCount] = useState(0)
+  const [showTip1, setShowTip1] = useState(false)
+  const [tip1TargetId, setTip1TargetId] = useState(null)
+  const [showTip2, setShowTip2] = useState(false)
+  const [tip2TargetId, setTip2TargetId] = useState(null)
+  const [showTip3, setShowTip3] = useState(false)
+  const [tipActionLabel, setTipActionLabel] = useState('Long-press')
+  const tipKeys = {
+    tip1: 'groc_tip1_shown',
+    tip2: 'groc_tip2_shown',
+    tip3: 'groc_tip3_shown',
+    actions: 'groc_tip_actions',
+    checked: 'groc_tip_checked'
+  }
 
   // unified long-press handlers
   const { bind: bindItem } = useLongPress()
@@ -40,6 +55,37 @@ export default function ShoppingList({ supabase, user, currentList, onShareList,
   }
 
   // -------------------------------------------------
+  // Init persisted counts & flags
+  useEffect(() => {
+    try {
+      const storedActions = parseInt(localStorage.getItem(tipKeys.actions) || '0', 10)
+      if (!Number.isNaN(storedActions)) setActionCount(storedActions)
+      const storedChecked = parseInt(localStorage.getItem(tipKeys.checked) || '0', 10)
+      if (!Number.isNaN(storedChecked)) setCheckedCount(storedChecked)
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return
+    const mql = window.matchMedia("(pointer:fine)")
+    const update = () => {
+      setTipActionLabel(mql.matches ? "Right-click" : "Long-press")
+    }
+    update()
+    if (mql.addEventListener) {
+      mql.addEventListener("change", update)
+    } else {
+      mql.addListener(update)
+    }
+    return () => {
+      if (mql.removeEventListener) {
+        mql.removeEventListener("change", update)
+      } else {
+        mql.removeListener(update)
+      }
+    }
+  }, [])
+
   // Fetch data
   // -------------------------------------------------
   const fetchItems = async () => {
@@ -99,6 +145,41 @@ export default function ShoppingList({ supabase, user, currentList, onShareList,
   // -------------------------------------------------
   // Item actions
   // -------------------------------------------------
+  const recordAction = (increment = 1) => {
+    setActionCount(prev => {
+      const next = prev + increment
+      try {
+        localStorage.setItem(tipKeys.actions, String(next))
+        if (next >= 5 && !localStorage.getItem('groc_support_opened')) {
+          localStorage.setItem('groc_support_pending', '1')
+          window.dispatchEvent(new CustomEvent('open-support-modal'))
+        }
+      } catch {}
+      return next
+    })
+  }
+
+  const recordChecked = () => {
+    setCheckedCount(prev => {
+      const next = prev + 1
+      try {
+        localStorage.setItem(tipKeys.checked, String(next))
+      } catch {}
+      if (next === 1 && !localStorage.getItem(tipKeys.tip2)) {
+        setTip2TargetId(lastCheckedIdRef.current)
+        setShowTip2(true)
+        localStorage.setItem(tipKeys.tip2, '1')
+      }
+      if (next === 3 && !localStorage.getItem(tipKeys.tip3)) {
+        setShowTip3(true)
+        localStorage.setItem(tipKeys.tip3, '1')
+      }
+      return next
+    })
+  }
+
+  const lastCheckedIdRef = useRef(null)
+
   const markChecked = async (item) => {
     const now = new Date().toISOString()
 
@@ -121,6 +202,10 @@ export default function ShoppingList({ supabase, user, currentList, onShareList,
         .update({ checked: true, quantity: 1, updated_at: now })
         .eq('id', item.id)
     )
+
+    lastCheckedIdRef.current = item.id
+    recordChecked()
+    recordAction()
   }
 
   const openEditDialog = (item) => {
@@ -175,6 +260,8 @@ export default function ShoppingList({ supabase, user, currentList, onShareList,
         .update({ quantity, updated_at: now })
         .eq('id', itemId)
     )
+
+    recordAction()
   }
 
   const addItem = async (name) => {
@@ -182,6 +269,7 @@ export default function ShoppingList({ supabase, user, currentList, onShareList,
     if (!name) return
 
     const now = new Date().toISOString()
+    const wasEmpty = items.length === 0
 
     if (items.some(i => i.name.toLowerCase() === name.toLowerCase())) {
       alert(`"${name}" is already in the list.`)
@@ -213,6 +301,13 @@ export default function ShoppingList({ supabase, user, currentList, onShareList,
           .eq('id', existing.id)
       )
 
+      if (!localStorage.getItem(tipKeys.tip1)) {
+        setTip1TargetId(restored.id)
+        setShowTip1(true)
+        localStorage.setItem(tipKeys.tip1, '1')
+      }
+
+      recordAction()
       setInput('')
       return
     }
@@ -235,6 +330,13 @@ export default function ShoppingList({ supabase, user, currentList, onShareList,
         .insert([newItem])
     )
 
+    if (!localStorage.getItem(tipKeys.tip1)) {
+      setTip1TargetId(newItem.id)
+      setShowTip1(true)
+      localStorage.setItem(tipKeys.tip1, '1')
+    }
+
+    recordAction()
     setInput('')
   }
 
@@ -278,9 +380,9 @@ export default function ShoppingList({ supabase, user, currentList, onShareList,
     let canceled = false
 
     const fetchMemberCount = async () => {
-      const { data, count, error } = await supabase
+      const { data, error } = await supabase
         .from('list_members')
-        .select('id,user_id,role', { count: 'exact' })
+        .select('user_id')
         .eq('list_id', currentList.id)
 
       if (canceled) return
@@ -294,18 +396,13 @@ export default function ShoppingList({ supabase, user, currentList, onShareList,
         return
       }
 
-      const rowsCount = count ?? data?.length ?? 0
-      const total = rowsCount + 1 // owner not stored in list_members
-
-      console.info('[ShareBadge] list members fetched', {
-        listId: currentList.id,
-        ownerId: currentList.owner_id,
-        currentUserId: user?.id,
-        rowsCount,
-        total,
-        members: data?.map(m => ({ id: m.id, user_id: m.user_id, role: m.role })) || []
+      const memberIds = new Set()
+      if (currentList.owner_id) memberIds.add(currentList.owner_id)
+      ;(data || []).forEach(row => {
+        if (row?.user_id) memberIds.add(row.user_id)
       })
-      setMemberCount(total)
+
+      setMemberCount(memberIds.size || null)
     }
 
     fetchMemberCount()
@@ -400,7 +497,7 @@ export default function ShoppingList({ supabase, user, currentList, onShareList,
           <div className="flex-1 flex justify-center">
             <CartHeader title={currentList?.name || 'Shopping List'} />
           </div>
-          <div className="flex-shrink-0 flex items-center justify-end mt-[-4px]">
+          <div className="flex-shrink-0 flex items-center justify-end mt-[-4px] relative">
             <button
               onClick={() => onShareList?.(currentList)}
               disabled={!currentList || shareLoading}
@@ -426,6 +523,21 @@ export default function ShoppingList({ supabase, user, currentList, onShareList,
                 )}
               </span>
             </button>
+            {showTip3 && (
+              <div className="absolute top-full right-0 mt-1 z-20 bg-white text-gray-800 text-xs px-4 py-3 rounded shadow border border-gray-200 w-80 text-left">
+                Share this list to sync with others in real time
+                <button
+                  className="ml-2 text-customGreen"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setShowTip3(false)
+                  }}
+                >
+                  Got it
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -437,13 +549,38 @@ export default function ShoppingList({ supabase, user, currentList, onShareList,
           {items.map(item => (
             <li
               key={item.id}
-              {...bindItem({
-                onLongPress: () => setActiveItem(item),
-                onTap: () => markChecked(item),
-                onRightClick: () => setActiveItem(item)
-              })}
+                    {...bindItem({
+                      onLongPress: () => setActiveItem(item),
+                      onTap: () => markChecked(item),
+                      onRightClick: () => setActiveItem(item)
+                    })}
               className="relative bg-customGreen text-white font-bold flex flex-col items-center justify-center h-24 rounded-lg shadow cursor-pointer select-none hover:scale-105 transition-transform"
             >
+              {showTip1 && item.id === tip1TargetId && (
+                <div
+                  className="absolute -top-3 left-1/2 -translate-x-1/2 z-20 bg-white text-gray-800 text-xs px-4 py-3 rounded shadow border border-gray-200 w-80 text-left"
+                  onPointerDown={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                  }}
+                >
+                  Tip: {tipActionLabel} an item to add a quantity
+                  <button
+                    className="ml-2 text-customGreen"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setShowTip1(false)
+                    }}
+                  >
+                    Got it
+                  </button>
+                </div>
+              )}
               {item.name.split(' ').map((w, i) => (
                 <FitText key={i} text={w} maxFont={20} minFont={10} padding={16} />
               ))}
@@ -524,7 +661,7 @@ export default function ShoppingList({ supabase, user, currentList, onShareList,
           <div className="mt-2 space-y-4">
             {recentSuggestions.length > 0 && (
               <div>
-                <div className="text-sm font-semibold text-gray-600 mb-1">Recently used items</div>
+              <div className="text-sm font-semibold text-gray-600 mb-1">Recently used items</div>
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                   {recentSuggestions.map(s => (
                     <div
@@ -534,13 +671,38 @@ export default function ShoppingList({ supabase, user, currentList, onShareList,
                         onTap: () => addItem(s.name),
                         onRightClick: () => openEditDialog(s)
                       })}
-                      className="bg-gray-400 text-white font-semibold flex flex-col items-center justify-center h-20 rounded-lg shadow cursor-pointer select-none hover:scale-105 transition-transform"
-                    >
-                      {s.name.split(' ').map((w, i) => (
-                        <FitText key={i} text={w} maxFont={18} minFont={10} padding={16} />
-                      ))}
-                    </div>
-                  ))}
+                    className="relative bg-gray-400 text-white font-semibold flex flex-col items-center justify-center h-20 rounded-lg shadow cursor-pointer select-none hover:scale-105 transition-transform"
+                  >
+                    {showTip2 && s.id === tip2TargetId && (
+                      <div
+                        className="absolute -top-3 left-1/2 -translate-x-1/2 z-20 bg-white text-gray-800 text-xs px-4 py-3 rounded shadow border border-gray-200 w-80 text-left"
+                        onPointerDown={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                        }}
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                        }}
+                      >
+                        Tip: {tipActionLabel} an item to add a category
+                        <button
+                          className="ml-2 text-customGreen"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            setShowTip2(false)
+                          }}
+                        >
+                          Got it
+                        </button>
+                      </div>
+                    )}
+                    {s.name.split(' ').map((w, i) => (
+                      <FitText key={i} text={w} maxFont={18} minFont={10} padding={16} />
+                    ))}
+                  </div>
+                ))}
                 </div>
               </div>
             )}
@@ -555,13 +717,13 @@ export default function ShoppingList({ supabase, user, currentList, onShareList,
                     .map(item => (
                       <div
                         key={item.id}
-                        {...bindSuggestion({
-                          onLongPress: () => openEditDialog(item),
-                          onTap: () => addItem(item.name),
-                          onRightClick: () => openEditDialog(item)
-                        })}
-                        className="bg-gray-400 text-white font-semibold flex flex-col items-center justify-center h-20 rounded-lg shadow cursor-pointer select-none hover:scale-105 transition-transform"
-                      >
+                    {...bindSuggestion({
+                      onLongPress: () => openEditDialog(item),
+                      onTap: () => addItem(item.name),
+                      onRightClick: () => openEditDialog(item)
+                    })}
+                    className="relative bg-gray-400 text-white font-semibold flex flex-col items-center justify-center h-20 rounded-lg shadow cursor-pointer select-none hover:scale-105 transition-transform"
+                  >
                         {item.name.split(' ').map((w, i) => (
                           <FitText key={i} text={w} maxFont={18} minFont={10} padding={16} />
                         ))}
@@ -585,13 +747,13 @@ export default function ShoppingList({ supabase, user, currentList, onShareList,
                         onTap: () => addItem(item.name),
                         onRightClick: () => openEditDialog(item)
                       })}
-                      className="bg-gray-400 text-white font-semibold flex flex-col items-center justify-center h-20 rounded-lg shadow cursor-pointer select-none hover:scale-105 transition-transform"
+                      className="relative bg-gray-400 text-white font-semibold flex flex-col items-center justify-center h-20 rounded-lg shadow cursor-pointer select-none hover:scale-105 transition-transform"
                     >
-                      {item.name.split(' ').map((w, i) => (
-                        <FitText key={i} text={w} maxFont={18} minFont={10} padding={16} />
-                      ))}
-                    </div>
-                  ))}
+                        {item.name.split(' ').map((w, i) => (
+                          <FitText key={i} text={w} maxFont={18} minFont={10} padding={16} />
+                        ))}
+                      </div>
+                    ))}
                 </div>
               </div>
             )}
