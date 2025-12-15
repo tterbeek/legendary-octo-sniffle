@@ -4,7 +4,7 @@ import { supabase } from './supabaseClient'
 import SupportModal from './SupportModal';
 
 
-export default function Sidebar({ lists, setLists, currentList, setCurrentList, session, closeSidebar }) {
+export default function Sidebar({ lists, setLists, currentList, setCurrentList, session, closeSidebar, onShareList }) {
   const [newListName, setNewListName] = useState('')
   const [loading, setLoading] = useState(false)
   const [activeMenu, setActiveMenu] = useState(null)
@@ -151,32 +151,10 @@ export default function Sidebar({ lists, setLists, currentList, setCurrentList, 
 }
 
 
-  const handleShareList = async (list) => {
-    const email = prompt('Enter email to share this list:')?.trim()
-    if (!email) return alert('Please enter an email.')
-
-    setLoading(true)
-    try {
-      const user = (await supabase.auth.getUser()).data.user
-      const res = await fetch('/api/send-invite', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email, listName: list.name, listId: list.id, inviterEmail: user.email
-        }),
-      })
-      const result = await res.json()
-      if (!res.ok || !result.success) return alert(`Failed: ${result.error}`)
-      alert(result.invited === 'existing'
-        ? `User ${email} was added and notified.`
-        : `Invite email sent to ${email}.`)
-    } catch (err) {
-      console.error(err)
-      alert('Failed to share list.')
-    } finally {
-      setLoading(false)
-      setActiveMenu(null)
-    }
+  const handleShareList = (list) => {
+    closeSidebar()
+    setActiveMenu(null)
+    onShareList?.(list)
   }
 
   const handleDeleteList = async (list) => {
@@ -267,39 +245,41 @@ export default function Sidebar({ lists, setLists, currentList, setCurrentList, 
             </button>
 
 
-            {list.owner_id === session.user.id && (
-              <div className="relative">
-                <button
-                  className={`px-1 py-0.5 ${currentList?.id === list.id ? 'text-white' : 'text-gray-500'} hover:text-gray-200`}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setActiveMenu(activeMenu === list.id ? null : list.id)
-                  }}
-                >
-                  ⋮
-                </button>
+            <div className="relative">
+              <button
+                className={`px-1 py-0.5 ${currentList?.id === list.id ? 'text-white' : 'text-gray-500'} hover:text-gray-200`}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setActiveMenu(activeMenu === list.id ? null : list.id)
+                }}
+              >
+                ⋮
+              </button>
 
-                {activeMenu === list.id && (
-                  <div
-                    ref={el => menuRefs.current[list.id] = el}
-                    className="absolute right-0 top-full mt-1 w-32 bg-white text-gray-700 rounded shadow-lg z-50"
-                  >
+              {activeMenu === list.id && (
+                <div
+                  ref={el => menuRefs.current[list.id] = el}
+                  className="absolute right-0 top-full mt-1 w-32 bg-white text-gray-700 rounded shadow-lg z-50"
+                >
+                  {list.owner_id === session.user.id && (
                     <button
                       className="block w-full text-left px-2 py-1 hover:bg-gray-100"
                       onClick={() => handleRenameList(list)}
                     >Rename</button>
-                    <button
-                      className="block w-full text-left px-2 py-1 hover:bg-gray-100"
-                      onClick={() => handleShareList(list)}
-                    >Share</button>
+                  )}
+                  <button
+                    className="block w-full text-left px-2 py-1 hover:bg-gray-100"
+                    onClick={() => handleShareList(list)}
+                  >Share</button>
+                  {list.owner_id === session.user.id && (
                     <button
                       className="block w-full text-left px-2 py-1 text-red-500 hover:bg-gray-100"
                       onClick={() => handleDeleteList(list)}
                     >Delete</button>
-                  </div>
-                )}
-              </div>
-            )}
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         ))}
       </div>

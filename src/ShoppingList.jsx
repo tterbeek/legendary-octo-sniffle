@@ -4,7 +4,7 @@ import CartHeader from './CartHeader'
 import EditItemDialog from './EditItemDialog'
 import useLongPress from "./useLongPress"
 
-export default function ShoppingList({ supabase, user, currentList }) {
+export default function ShoppingList({ supabase, user, currentList, onShareList, shareLoading = false }) {
   const [items, setItems] = useState([])
   const [suggestions, setSuggestions] = useState([])
   const [input, setInput] = useState('')
@@ -12,13 +12,8 @@ export default function ShoppingList({ supabase, user, currentList }) {
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editItem, setEditItem] = useState(null)
   const [maxRecent, setMaxRecent] = useState(3)
-  const [sharing, setSharing] = useState(false)
-  const [shareDialogOpen, setShareDialogOpen] = useState(false)
-  const [shareName, setShareName] = useState('')
-  const [shareEmail, setShareEmail] = useState('')
-  const [shareError, setShareError] = useState(null)
-  const [shareSuccessVisible, setShareSuccessVisible] = useState(false)
   const [dbWarning, setDbWarning] = useState(false)
+  const [memberCount, setMemberCount] = useState(null)
 
   // unified long-press handlers
   const { bind: bindItem } = useLongPress()
@@ -169,94 +164,6 @@ export default function ShoppingList({ supabase, user, currentList }) {
     setSuggestions(prev => prev.filter(s => s.id !== id))
   }
 
-  const shareCurrentList = async ({ email, name }) => {
-    if (!currentList) return
-    const trimmedEmail = (email || "").trim()
-    if (!trimmedEmail) {
-      setShareError('Please enter an email.')
-      return
-    }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(trimmedEmail)) {
-      setShareError('Enter a valid email.')
-      return
-    }
-
-    const trimmedName = (name || "").trim()
-
-    setSharing(true)
-    try {
-      const { data } = await supabase.auth.getUser()
-      const res = await fetch('/api/send-invite', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: trimmedEmail,
-          listName: currentList.name,
-          listId: currentList.id,
-          inviterEmail: data?.user?.email || user?.email,
-          displayName: trimmedName || null,
-        }),
-      })
-      const result = await res.json()
-      if (!res.ok || !result.success) return alert(`Failed: ${result.error}`)
-      setShareError(null)
-      setShareEmail('')
-      if (trimmedName) setShareName(trimmedName)
-
-      // Persist display_name for future prefill
-      try {
-        await supabase
-          .from('user_consents')
-          .upsert(
-            { user_id: user.id, display_name: trimmedName || null },
-            { onConflict: 'user_id' }
-          )
-      } catch (e) {
-        console.error('Failed to save display_name', e)
-      }
-
-      setShareSuccessVisible(true)
-      setTimeout(() => setShareSuccessVisible(false), 2000)
-    } catch (err) {
-      console.error(err)
-      setShareError('Failed to share list.')
-    } finally {
-      setSharing(false)
-    }
-  }
-
-  const openShareDialog = () => {
-    setShareDialogOpen(true)
-    setShareEmail('')
-    setShareError(null)
-    setShareSuccessVisible(false)
-  }
-
-  const closeShareDialog = () => {
-    setShareDialogOpen(false)
-    setShareEmail('')
-    setShareError(null)
-    setShareSuccessVisible(false)
-  }
-
-  useEffect(() => {
-    if (!user?.id) return
-    const fetchDisplayName = async () => {
-      try {
-        const { data } = await supabase
-          .from('user_consents')
-          .select('display_name')
-          .eq('user_id', user.id)
-          .maybeSingle()
-        if (data?.display_name) setShareName(data.display_name)
-      } catch (err) {
-        console.error('Failed to fetch display_name', err)
-      }
-    }
-    fetchDisplayName()
-  }, [user?.id])
-
   const updateQuantity = async (itemId, quantity) => {
     const now = new Date().toISOString()
     setItems(prev => prev.map(i =>
@@ -362,6 +269,43 @@ export default function ShoppingList({ supabase, user, currentList }) {
     }
   }, [])
 
+  useEffect(() => {
+    if (!currentList) {
+      setMemberCount(null)
+      return
+    }
+
+    let canceled = false
+
+    const fetchMemberCount = async () => {
+      const { data, count, error } = await supabase
+        .from('list_members')
+        .select('id,user_id,role', { count: 'exact' })
+        .eq('list_id', currentList.id)
+
+      if (canceled) return
+
+      if (error) {
+        console.error('Failed to fetch member count', {
+          listId: currentList.id,
+          error
+        })
+        setMemberCount(null)
+        return
+      }
+
+      const rowsCount = count ?? data?.length ?? 0
+      const total = rowsCount + 1 // owner not stored in list_members
+      setMemberCount(total)
+    }
+
+    fetchMemberCount()
+
+    return () => {
+      canceled = true
+    }
+  }, [currentList, supabase, user?.id])
+
   // -------------------------------------------------
   // Derived data
   // -------------------------------------------------
@@ -449,24 +393,29 @@ export default function ShoppingList({ supabase, user, currentList }) {
           </div>
           <div className="flex-shrink-0 flex items-center justify-end mt-[-4px]">
             <button
-              onClick={openShareDialog}
-              disabled={!currentList || sharing}
+              onClick={() => onShareList?.(currentList)}
+              disabled={!currentList || shareLoading}
               className="p-3 text-customGreen hover:text-customGreen rounded-full disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-customGreen/30 transition-colors"
               aria-label="Share list"
             >
-              <svg
-                aria-hidden="true"
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 7m-4 0a4 4 0 1 0 8 0a4 4 0 1 0 -8 0" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16 3.13a4 4 0 0 1 0 7.75" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21v-2a4 4 0 0 0 -3 -3.85" />
-              </svg>
+              <span className="flex items-center gap-1">
+                <svg
+                  aria-hidden="true"
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 7m-4 0a4 4 0 1 0 8 0a4 4 0 1 0 -8 0" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16 3.13a4 4 0 0 1 0 7.75" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21v-2a4 4 0 0 0 -3 -3.85" />
+                </svg>
+                {memberCount > 1 && (
+                  <span className="text-sm font-semibold text-gray-700">{memberCount}</span>
+                )}
+              </span>
             </button>
           </div>
         </div>
@@ -650,80 +599,6 @@ export default function ShoppingList({ supabase, user, currentList }) {
         onDelete={deleteItem}
         onClose={closeEditDialog}
       />
-
-      {shareDialogOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-          onClick={closeShareDialog}
-        >
-          <div
-            className="bg-white w-80 max-w-[90vw] rounded-2xl shadow-xl p-5"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-lg font-semibold mb-3">Invite someone you shop with</h3>
-
-            <form
-              className="space-y-3"
-              onSubmit={(e) => {
-                e.preventDefault()
-                shareCurrentList({ email: shareEmail, name: shareName })
-              }}
-            >
-              <div className="space-y-1">
-                <label className="text-sm font-medium text-gray-700">Your name</label>
-                <input
-                  type="text"
-                  value={shareName}
-                  onChange={(e) => setShareName(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-customGreen"
-                  placeholder="e.g. Alex"
-                />
-                <div className="text-xs text-gray-500">Shown in the invite email</div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-sm font-medium text-gray-700">Their email address</label>
-                <input
-                  type="email"
-                  value={shareEmail}
-                  onChange={(e) => {
-                    setShareEmail(e.target.value)
-                    setShareError(null)
-                  }}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-customGreen"
-                  placeholder="name@example.com"
-                />
-                <div className="text-xs text-gray-500">We'll send them an invite to this list</div>
-              </div>
-
-              {shareError && (
-                <div className="text-sm text-red-600">{shareError}</div>
-              )}
-
-              {shareSuccessVisible && (
-                <div className="text-sm text-customGreen">They'll see updates instantly</div>
-              )}
-
-              <div className="flex justify-end gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={closeShareDialog}
-                  className="px-3 py-2 rounded-lg border border-gray-200 text-gray-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={sharing}
-                  className="px-4 py-2 rounded-lg bg-customGreen text-white disabled:opacity-60"
-                >
-                  Share
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

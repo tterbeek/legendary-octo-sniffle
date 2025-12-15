@@ -176,7 +176,7 @@ export default async function handler(req, res) {
 
       // Send notification email
       await resend.emails.send({
-        from: 'GrocLi <no-reply@app.grocli.net>',
+        from: 'GrocLi Shared Shopping List<no-reply@app.grocli.net>',
         to: email,
         subject: `${inviterLabel} invited you to a shared shopping list`,
         html: buildInviteHtml(APP_URL),
@@ -202,7 +202,7 @@ export default async function handler(req, res) {
 
     // Send signup invite email
     await resend.emails.send({
-      from: 'GrocLi <no-reply@app.grocli.net>',
+      from: 'GrocLi - Shared Shopping List<no-reply@app.grocli.net>',
       to: email,
       subject: `${inviterLabel} invited you to a shared shopping list`,
       html: buildInviteHtml(inviteLink),

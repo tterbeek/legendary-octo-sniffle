@@ -10,12 +10,17 @@ import Privacy from './Privacy.jsx'
 import Terms from './Terms.jsx'
 import GrocLiLogoAnimation from './GrocLiLogoAnimation'
 import GrocLiLogoStatic from './GrocLiLogoStatic'
+import ShareDialog from './ShareDialog'
 export default function App() {
   const [session, setSession] = useState(undefined)
   const [lists, setLists] = useState([])
   const [currentList, setCurrentList] = useState(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [listsLoading, setListsLoading] = useState(true)
+  const [shareDialogOpen, setShareDialogOpen] = useState(false)
+  const [shareTarget, setShareTarget] = useState(null)
+  const [shareName, setShareName] = useState('')
+  const [sharing, setSharing] = useState(false)
 
   // Splashscreen
   const [showLogo, setShowLogo] = useState(false)
@@ -77,18 +82,28 @@ export default function App() {
       setListsLoading(true)
 
       // Owned lists
-      const { data: ownedLists = [] } = await supabase
+      const { data: ownedLists = [], error: ownedError } = await supabase
         .from('lists')
         .select('*')
         .eq('owner_id', userId)
 
+      if (ownedError) {
+        console.error('Failed to load owned lists', ownedError)
+      }
+
       // Shared lists
-      const { data: sharedMemberships = [] } = await supabase
+      const { data: sharedMemberships = [], error: sharedError } = await supabase
         .from('list_members')
         .select('lists(*)')
         .eq('user_id', userId)
 
-      const sharedLists = sharedMemberships.map(m => m.lists)
+      if (sharedError) {
+        console.error('Failed to load shared lists', sharedError)
+      }
+
+      const sharedLists = (sharedMemberships || [])
+        .map(m => m?.lists)
+        .filter(Boolean)
 
       // Combine & dedupe
       const deduped = [...ownedLists, ...sharedLists].filter(
@@ -145,6 +160,82 @@ export default function App() {
     fetchLists()
   }, [session])
 
+  // Prefill display name for sharing
+  useEffect(() => {
+    if (!session?.user?.id) return
+    const loadDisplayName = async () => {
+      try {
+        const { data } = await supabase
+          .from('user_consents')
+          .select('display_name')
+          .eq('user_id', session.user.id)
+          .maybeSingle()
+        if (data?.display_name) setShareName(data.display_name)
+      } catch (err) {
+        console.error('Failed to load display_name', err)
+      }
+    }
+    loadDisplayName()
+  }, [session?.user?.id])
+
+  const openShareDialog = (list) => {
+    if (!list) return
+    setShareTarget(list)
+    setShareDialogOpen(true)
+  }
+
+  const closeShareDialog = () => {
+    setShareDialogOpen(false)
+    setShareTarget(null)
+  }
+
+  const handleShare = async ({ email, name }) => {
+    if (!shareTarget) throw new Error('No list selected.')
+    const trimmedEmail = (email || '').trim()
+    const trimmedName = (name || '').trim()
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!trimmedEmail) throw new Error('Please enter an email.')
+    if (!emailRegex.test(trimmedEmail)) throw new Error('Enter a valid email.')
+
+    setSharing(true)
+    try {
+      const { data } = await supabase.auth.getUser()
+      const res = await fetch('/api/send-invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: trimmedEmail,
+          listName: shareTarget.name,
+          listId: shareTarget.id,
+          inviterEmail: data?.user?.email || session?.user?.email,
+          displayName: trimmedName || null,
+        }),
+      })
+      const result = await res.json()
+      if (!res.ok || !result.success) throw new Error(result.error || 'Failed to share list.')
+
+      setShareName(trimmedName)
+
+      try {
+        await supabase
+          .from('user_consents')
+          .upsert(
+            { user_id: session.user.id, display_name: trimmedName || null },
+            { onConflict: 'user_id' }
+          )
+      } catch (err) {
+        console.error('Failed to save display_name', err)
+      }
+
+      return true
+    } catch (err) {
+      console.error(err)
+      throw err
+    } finally {
+      setSharing(false)
+    }
+  }
+
   // Splashscreen
   if (showLogo) {
     return <GrocLiLogoAnimation onFinish={() => setShowLogo(false)} />
@@ -177,60 +268,73 @@ export default function App() {
 
   // Logged in UI
   return (
-    <BrowserRouter>
-      {sidebarOpen && (
-        <Sidebar
-          lists={lists}
-          setLists={setLists}
-          currentList={currentList}
-          setCurrentList={setCurrentList}
-          session={session}
-          closeSidebar={() => setSidebarOpen(false)}
-        />
-      )}
+    <>
+      <BrowserRouter>
+        {sidebarOpen && (
+          <Sidebar
+            lists={lists}
+            setLists={setLists}
+            currentList={currentList}
+            setCurrentList={setCurrentList}
+            session={session}
+            closeSidebar={() => setSidebarOpen(false)}
+            onShareList={openShareDialog}
+          />
+        )}
 
-      <button
-        className={`fixed top-4 left-4 z-50 p-3 rounded text-xl transition-colors ${
-          sidebarOpen ? 'bg-white' : 'bg-gray-50'
-        }`}
-        onClick={() => setSidebarOpen(true)}
-      >
-        ☰
-      </button>
+        <button
+          className={`fixed top-4 left-4 z-50 p-3 rounded text-xl transition-colors ${
+            sidebarOpen ? 'bg-white' : 'bg-gray-50'
+          }`}
+          onClick={() => setSidebarOpen(true)}
+        >
+          ☰
+        </button>
 
-      <Routes>
-        <Route path="/auth/callback" element={<AuthCallback />} />
+        <Routes>
+          <Route path="/auth/callback" element={<AuthCallback />} />
 
-        <Route
-          path="/"
-          element={
-            listsLoading ? (
-              <div className="flex flex-col items-center justify-center min-h-screen">
-                <GrocLiLogoStatic />
-                <p className="text-gray-500 mt-4">Loading your lists...</p>
-              </div>
-            ) : currentList ? (
-              <ShoppingList
-                supabase={supabase}
-                user={session.user}
-                currentList={currentList}
-              />
-            ) : (
-              <div className="flex flex-col items-center justify-center min-h-screen text-center">
-                <GrocLiLogoStatic />
-                <p className="text-gray-600 mt-4">
-                  No lists found — create one to get started!
-                </p>
-              </div>
-            )
-          }
-        />
+          <Route
+            path="/"
+            element={
+              listsLoading ? (
+                <div className="flex flex-col items-center justify-center min-h-screen">
+                  <GrocLiLogoStatic />
+                  <p className="text-gray-500 mt-4">Loading your lists...</p>
+                </div>
+              ) : currentList ? (
+                <ShoppingList
+                  supabase={supabase}
+                  user={session.user}
+                  currentList={currentList}
+                  onShareList={openShareDialog}
+                  shareLoading={sharing}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center min-h-screen text-center">
+                  <GrocLiLogoStatic />
+                  <p className="text-gray-600 mt-4">
+                    No lists found — create one to get started!
+                  </p>
+                </div>
+              )
+            }
+          />
 
-        <Route path="/login" element={<Login onLogin={setSession} />} />
-        <Route path="/signup" element={<Signup onSignup={setSession} />} />
-        <Route path="/privacy" element={<Privacy />} />
-        <Route path="/terms" element={<Terms />} />
-      </Routes>
-    </BrowserRouter>
+          <Route path="/login" element={<Login onLogin={setSession} />} />
+          <Route path="/signup" element={<Signup onSignup={setSession} />} />
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/terms" element={<Terms />} />
+        </Routes>
+      </BrowserRouter>
+
+      <ShareDialog
+        open={shareDialogOpen}
+        defaultName={shareName}
+        loading={sharing}
+        onClose={closeShareDialog}
+        onShare={handleShare}
+      />
+    </>
   )
 }
