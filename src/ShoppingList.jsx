@@ -296,6 +296,15 @@ export default function ShoppingList({ supabase, user, currentList, onShareList,
 
       const rowsCount = count ?? data?.length ?? 0
       const total = rowsCount + 1 // owner not stored in list_members
+
+      console.info('[ShareBadge] list members fetched', {
+        listId: currentList.id,
+        ownerId: currentList.owner_id,
+        currentUserId: user?.id,
+        rowsCount,
+        total,
+        members: data?.map(m => ({ id: m.id, user_id: m.user_id, role: m.role })) || []
+      })
       setMemberCount(total)
     }
 
