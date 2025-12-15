@@ -14,6 +14,7 @@ export default function ShoppingList({ supabase, user, currentList }) {
   const [maxRecent, setMaxRecent] = useState(3)
   const [sharing, setSharing] = useState(false)
   const [shareDialogOpen, setShareDialogOpen] = useState(false)
+  const [shareName, setShareName] = useState('')
   const [shareEmail, setShareEmail] = useState('')
   const [shareError, setShareError] = useState(null)
   const [shareSuccessVisible, setShareSuccessVisible] = useState(false)
@@ -168,7 +169,7 @@ export default function ShoppingList({ supabase, user, currentList }) {
     setSuggestions(prev => prev.filter(s => s.id !== id))
   }
 
-  const shareCurrentList = async (email) => {
+  const shareCurrentList = async ({ email, name }) => {
     if (!currentList) return
     const trimmedEmail = (email || "").trim()
     if (!trimmedEmail) {
@@ -181,6 +182,8 @@ export default function ShoppingList({ supabase, user, currentList }) {
       return
     }
 
+    const trimmedName = (name || "").trim()
+
     setSharing(true)
     try {
       const { data } = await supabase.auth.getUser()
@@ -191,13 +194,28 @@ export default function ShoppingList({ supabase, user, currentList }) {
           email: trimmedEmail,
           listName: currentList.name,
           listId: currentList.id,
-          inviterEmail: data?.user?.email || user?.email
+          inviterEmail: data?.user?.email || user?.email,
+          displayName: trimmedName || null,
         }),
       })
       const result = await res.json()
       if (!res.ok || !result.success) return alert(`Failed: ${result.error}`)
       setShareError(null)
       setShareEmail('')
+      if (trimmedName) setShareName(trimmedName)
+
+      // Persist display_name for future prefill
+      try {
+        await supabase
+          .from('user_consents')
+          .upsert(
+            { user_id: user.id, display_name: trimmedName || null },
+            { onConflict: 'user_id' }
+          )
+      } catch (e) {
+        console.error('Failed to save display_name', e)
+      }
+
       setShareSuccessVisible(true)
       setTimeout(() => setShareSuccessVisible(false), 2000)
     } catch (err) {
@@ -221,6 +239,23 @@ export default function ShoppingList({ supabase, user, currentList }) {
     setShareError(null)
     setShareSuccessVisible(false)
   }
+
+  useEffect(() => {
+    if (!user?.id) return
+    const fetchDisplayName = async () => {
+      try {
+        const { data } = await supabase
+          .from('user_consents')
+          .select('display_name')
+          .eq('user_id', user.id)
+          .maybeSingle()
+        if (data?.display_name) setShareName(data.display_name)
+      } catch (err) {
+        console.error('Failed to fetch display_name', err)
+      }
+    }
+    fetchDisplayName()
+  }, [user?.id])
 
   const updateQuantity = async (itemId, quantity) => {
     const now = new Date().toISOString()
@@ -631,11 +666,23 @@ export default function ShoppingList({ supabase, user, currentList }) {
               className="space-y-3"
               onSubmit={(e) => {
                 e.preventDefault()
-                shareCurrentList(shareEmail)
+                shareCurrentList({ email: shareEmail, name: shareName })
               }}
             >
               <div className="space-y-1">
-                <label className="text-sm font-medium text-gray-700">Email</label>
+                <label className="text-sm font-medium text-gray-700">Your name</label>
+                <input
+                  type="text"
+                  value={shareName}
+                  onChange={(e) => setShareName(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-customGreen"
+                  placeholder="e.g. Alex"
+                />
+                <div className="text-xs text-gray-500">Shown in the invite email</div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-gray-700">Their email address</label>
                 <input
                   type="email"
                   value={shareEmail}
@@ -646,6 +693,7 @@ export default function ShoppingList({ supabase, user, currentList }) {
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-customGreen"
                   placeholder="name@example.com"
                 />
+                <div className="text-xs text-gray-500">We'll send them an invite to this list</div>
               </div>
 
               {shareError && (

@@ -34,7 +34,7 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.writeHead(405, corsHeaders).end('Method Not Allowed');
 
   try {
-    const { email, listId, listName, inviterEmail } = req.body || {};
+    const { email, listId, listName, inviterEmail, displayName } = req.body || {};
 
     if (!email || !listId || !listName || !inviterEmail) {
       return res
@@ -62,6 +62,99 @@ export default async function handler(req, res) {
 
     console.info('existingUser:', existingUser);
 
+    const inviterLabel = (displayName || '').trim() || inviterEmail;
+
+    const buildInviteHtml = (link) => `
+<!DOCTYPE html>
+<html>
+  <body style="margin:0; padding:0; background:#f6f8f8; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+    <table width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td align="center" style="padding:24px;">
+          <table width="100%" style="max-width:520px; background:#ffffff; border-radius:12px; padding:24px;">
+            
+            <!-- Header -->
+            <tr>
+              <td style="font-size:22px; font-weight:600; color:#578080;">
+                GrocLi
+              </td>
+            </tr>
+
+            <tr><td style="height:16px;"></td></tr>
+
+            <!-- Main message -->
+            <tr>
+              <td style="font-size:18px; font-weight:600; color:#1f2937;">
+                You’ve been invited to a shared shopping list
+              </td>
+            </tr>
+
+            <tr><td style="height:12px;"></td></tr>
+
+            <tr>
+              <td style="font-size:15px; color:#374151;">
+                <strong>${inviterLabel}</strong> has shared the list
+                <strong>“${listName}”</strong> with you.
+              </td>
+            </tr>
+
+            <tr><td style="height:20px;"></td></tr>
+
+            <!-- Value proposition -->
+            <tr>
+              <td style="font-size:15px; color:#374151;">
+                With GrocLi, you can:
+                <ul style="padding-left:18px; margin:12px 0;">
+                  <li>Shop together in real time</li>
+                  <li>See items added or checked instantly</li>
+                  <li>Avoid double buying and forgotten items</li>
+                </ul>
+              </td>
+            </tr>
+
+            <tr><td style="height:24px;"></td></tr>
+
+            <!-- CTA -->
+            <tr>
+              <td align="center">
+                <a href="${link}" style="
+                  background:#578080;
+                  color:#ffffff;
+                  text-decoration:none;
+                  padding:14px 24px;
+                  border-radius:8px;
+                  font-size:16px;
+                  font-weight:600;
+                  display:inline-block;
+                ">
+                  Join the list
+                </a>
+              </td>
+            </tr>
+
+            <tr><td style="height:20px;"></td></tr>
+
+            <!-- Secondary reassurance -->
+            <tr>
+              <td style="font-size:14px; color:#6b7280;">
+                No passwords. No setup.  
+                Just enter your email and you’re in.
+              </td>
+            </tr>
+
+          </table>
+
+          <!-- Footer -->
+          <div style="font-size:12px; color:#9ca3af; margin-top:12px;">
+            GrocLi · The fastest shared shopping list
+          </div>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
+`;
+
     if (existingUser) {
       // ----------------------------
       // Existing user: add to list_members
@@ -85,8 +178,8 @@ export default async function handler(req, res) {
       await resend.emails.send({
         from: 'GrocLi <no-reply@app.grocli.net>',
         to: email,
-        subject: `GrocLi: You've been added to ${listName} grocery list`,
-        html: `<p>${inviterEmail} has added you to <strong>${listName}. Please login to GrocLi to see your new grocery list.</strong>.</p>`,
+        subject: `${inviterLabel} invited you to a shared shopping list`,
+        html: buildInviteHtml(APP_URL),
       });
 
       return res
@@ -111,12 +204,8 @@ export default async function handler(req, res) {
     await resend.emails.send({
       from: 'GrocLi <no-reply@app.grocli.net>',
       to: email,
-      subject: `GrocLi: You're invited to join ${listName}`,
-      html: `
-        <h2>Hello, you've been invited to signup for GrocLi, the collaborative grocery list app.</h2>
-        <p>${inviterEmail} has shared with you <strong>${listName}</strong></p>
-        <p><a href="${inviteLink}">Click here to join</a></p>
-      `,
+      subject: `${inviterLabel} invited you to a shared shopping list`,
+      html: buildInviteHtml(inviteLink),
     });
 
     return res
