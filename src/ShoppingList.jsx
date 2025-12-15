@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import FitText from './FitText'
 import CartHeader from './CartHeader'
+import EditItemDialog from './EditItemDialog'
 import useLongPress from "./useLongPress"
 
 export default function ShoppingList({ supabase, user, currentList }) {
@@ -8,6 +9,9 @@ export default function ShoppingList({ supabase, user, currentList }) {
   const [suggestions, setSuggestions] = useState([])
   const [input, setInput] = useState('')
   const [activeItem, setActiveItem] = useState(null)
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [editItem, setEditItem] = useState(null)
+  const [maxRecent, setMaxRecent] = useState(3)
   const [dbWarning, setDbWarning] = useState(false)
 
   // unified long-press handlers
@@ -52,7 +56,7 @@ export default function ShoppingList({ supabase, user, currentList }) {
     if (!currentList) return
     const { data } = await supabase
       .from('items_new')
-      .select('id, name')
+      .select('id, name, category, list_id, updated_at')
       .eq('list_id', currentList.id)
       .eq('checked', true)
       .order('updated_at', { ascending: false })
@@ -99,8 +103,15 @@ export default function ShoppingList({ supabase, user, currentList }) {
 
     setItems(prev => prev.filter(i => i.id !== item.id))
     setSuggestions(prev => [
-      { id: item.id, name: item.name },
-      ...prev.filter(s => s.name !== item.name),
+      {
+        id: item.id,
+        name: item.name,
+        category: item.category ?? null,
+        list_id: item.list_id,
+        updated_at: now,
+        checked: true
+      },
+      ...prev.filter(s => s.id !== item.id),
     ])
 
     await runDb(
@@ -109,6 +120,47 @@ export default function ShoppingList({ supabase, user, currentList }) {
         .update({ checked: true, quantity: 1, updated_at: now })
         .eq('id', item.id)
     )
+  }
+
+  const openEditDialog = (item) => {
+    setEditItem(item)
+    setEditDialogOpen(true)
+  }
+
+  const closeEditDialog = () => {
+    setEditDialogOpen(false)
+    setEditItem(null)
+  }
+
+  const saveEdit = async ({ id, name, category }) => {
+    const now = new Date().toISOString()
+    const updatePromise = supabase
+      .from('items_new')
+      .update({ name, category, updated_at: now })
+      .eq('id', id)
+
+    const result = await runDb(updatePromise)
+    const finalResult = result === "slow" ? await updatePromise : result
+
+    if (finalResult?.error) throw finalResult.error
+
+    setItems(prev =>
+      prev.map(i => i.id === id ? { ...i, name, category } : i)
+    )
+    setSuggestions(prev =>
+      prev.map(s => s.id === id ? { ...s, name, category } : s)
+    )
+  }
+
+  const deleteItem = async (id) => {
+    const deletePromise = supabase.from("items_new").delete().eq("id", id)
+    const result = await runDb(deletePromise)
+    const finalResult = result === "slow" ? await deletePromise : result
+
+    if (finalResult?.error) throw finalResult.error
+
+    setItems(prev => prev.filter(i => i.id !== id))
+    setSuggestions(prev => prev.filter(s => s.id !== id))
   }
 
   const updateQuantity = async (itemId, quantity) => {
@@ -147,7 +199,8 @@ export default function ShoppingList({ supabase, user, currentList }) {
         name,
         quantity: 1,
         checked: false,
-        list_id: currentList.id,
+        category: existing.category ?? null,
+        list_id: existing.list_id || currentList.id,
         updated_at: now,
       }
       setItems(prev => [...prev, restored])
@@ -168,6 +221,7 @@ export default function ShoppingList({ supabase, user, currentList }) {
       name,
       quantity: 1,
       checked: false,
+      category: null,
       list_id: currentList.id,
       updated_at: now,
     }
@@ -191,6 +245,96 @@ export default function ShoppingList({ supabase, user, currentList }) {
       s.name.toLowerCase().includes(input.toLowerCase()) &&
       !items.some(i => i.name === s.name)
   )
+
+  // -------------------------------------------------
+  // Responsive recent count
+  // -------------------------------------------------
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return
+    const mediaQuery = window.matchMedia("(min-width: 640px)")
+    const update = () => setMaxRecent(mediaQuery.matches ? 4 : 3)
+    update()
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener("change", update)
+    } else {
+      mediaQuery.addListener(update)
+    }
+    return () => {
+      if (mediaQuery.removeEventListener) {
+        mediaQuery.removeEventListener("change", update)
+      } else {
+        mediaQuery.removeListener(update)
+      }
+    }
+  }, [])
+
+  // -------------------------------------------------
+  // Derived data
+  // -------------------------------------------------
+  const categories = useMemo(() => {
+    const unique = new Set()
+    ;[...items, ...suggestions].forEach(entry => {
+      if (entry?.category) unique.add(entry.category)
+    })
+    return Array.from(unique)
+  }, [items, suggestions])
+  const hasCategories = categories.length > 0
+
+  const recentSuggestions = useMemo(() => {
+    const sorted = [...filteredSuggestions].sort(
+      (a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0)
+    )
+    return sorted.slice(0, maxRecent)
+  }, [filteredSuggestions, maxRecent])
+
+  const normalizedCategory = (cat) => {
+    if (!cat) return null
+    const trimmed = cat.trim()
+    if (!trimmed) return null
+    return trimmed.toLowerCase()
+  }
+
+  const groupedSuggestions = useMemo(() => {
+    const groups = new Map()
+    filteredSuggestions.forEach(item => {
+      const normalized = normalizedCategory(item.category)
+      if (!normalized) return
+      const displayName = (item.category || "").trim()
+      if (!groups.has(normalized)) {
+        groups.set(normalized, { name: displayName, items: [] })
+      }
+      groups.get(normalized).items.push(item)
+    })
+
+    return Array.from(groups.values()).sort((a, b) =>
+      a.name.toLowerCase().localeCompare(b.name.toLowerCase())
+    )
+  }, [filteredSuggestions])
+
+  const uncategorizedSuggestions = useMemo(
+    () => filteredSuggestions
+      .filter(item => !normalizedCategory(item.category))
+      .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase())),
+    [filteredSuggestions]
+  )
+
+  useEffect(() => {
+    if (!editDialogOpen || !editItem) return
+    const stillExists =
+      items.some(i => i.id === editItem.id) ||
+      suggestions.some(s => s.id === editItem.id)
+
+    if (!stillExists) {
+      setEditDialogOpen(false)
+      setEditItem(null)
+    }
+  }, [items, suggestions, editDialogOpen, editItem])
+
+  useEffect(() => {
+    if (!activeItem) return
+    const stillExists = items.some(i => i.id === activeItem.id)
+    if (!stillExists) setActiveItem(null)
+  }, [items, activeItem])
 
   // -------------------------------------------------
   // Render
@@ -299,36 +443,93 @@ export default function ShoppingList({ supabase, user, currentList }) {
 
         {/* SUGGESTIONS */}
         {filteredSuggestions.length > 0 && (
-          <ul className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 gap-2 mt-2">
-            {filteredSuggestions.map(s => (
-              <li
-                key={s.id}
-                {...bindSuggestion({
-                  onLongPress: () => {
-                    if (window.confirm(`Delete "${s.name}" from history?`)) {
-                      runDb(supabase.from("items_new").delete().eq("id", s.id))
-                      setSuggestions(prev => prev.filter(x => x.id !== s.id))
-                    }
-                  },
-                  onTap: () => addItem(s.name),
-                  onRightClick: () => {
-                    if (window.confirm(`Delete "${s.name}"?`)) {
-                      runDb(supabase.from("items_new").delete().eq("id", s.id))
-                      setSuggestions(prev => prev.filter(x => x.id !== s.id))
-                    }
-                  }
-                })}
-                className="bg-gray-400 text-white font-semibold flex flex-col items-center justify-center h-20 rounded-lg shadow cursor-pointer select-none hover:scale-105 transition-transform"
-              >
-                {s.name.split(' ').map((w, i) => (
-                  <FitText key={i} text={w} maxFont={18} minFont={10} padding={16} />
-                ))}
-              </li>
+          <div className="mt-2 space-y-4">
+            {recentSuggestions.length > 0 && (
+              <div>
+                <div className="text-sm font-semibold text-gray-600 mb-1">Recently used items</div>
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                  {recentSuggestions.map(s => (
+                    <div
+                      key={`recent-${s.id}`}
+                      {...bindSuggestion({
+                        onLongPress: () => openEditDialog(s),
+                        onTap: () => addItem(s.name),
+                        onRightClick: () => openEditDialog(s)
+                      })}
+                      className="bg-gray-400 text-white font-semibold flex flex-col items-center justify-center h-20 rounded-lg shadow cursor-pointer select-none hover:scale-105 transition-transform"
+                    >
+                      {s.name.split(' ').map((w, i) => (
+                        <FitText key={i} text={w} maxFont={18} minFont={10} padding={16} />
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {groupedSuggestions.map(group => (
+              <div key={group.name}>
+                <div className="text-sm font-semibold text-gray-600 mb-1">{group.name}</div>
+                <div className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                  {group.items
+                    .slice()
+                    .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()))
+                    .map(item => (
+                      <div
+                        key={item.id}
+                        {...bindSuggestion({
+                          onLongPress: () => openEditDialog(item),
+                          onTap: () => addItem(item.name),
+                          onRightClick: () => openEditDialog(item)
+                        })}
+                        className="bg-gray-400 text-white font-semibold flex flex-col items-center justify-center h-20 rounded-lg shadow cursor-pointer select-none hover:scale-105 transition-transform"
+                      >
+                        {item.name.split(' ').map((w, i) => (
+                          <FitText key={i} text={w} maxFont={18} minFont={10} padding={16} />
+                        ))}
+                      </div>
+                    ))}
+                </div>
+              </div>
             ))}
-          </ul>
+
+            {uncategorizedSuggestions.length > 0 && (
+              <div>
+                <div className="text-sm font-semibold text-gray-600 mb-1">
+                  {hasCategories ? "Other uncategorized items" : "All items"}
+                </div>
+                <div className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                  {uncategorizedSuggestions.map(item => (
+                    <div
+                      key={item.id}
+                      {...bindSuggestion({
+                        onLongPress: () => openEditDialog(item),
+                        onTap: () => addItem(item.name),
+                        onRightClick: () => openEditDialog(item)
+                      })}
+                      className="bg-gray-400 text-white font-semibold flex flex-col items-center justify-center h-20 rounded-lg shadow cursor-pointer select-none hover:scale-105 transition-transform"
+                    >
+                      {item.name.split(' ').map((w, i) => (
+                        <FitText key={i} text={w} maxFont={18} minFont={10} padding={16} />
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
       </div>
+
+      <EditItemDialog
+        open={editDialogOpen}
+        item={editItem}
+        categories={categories}
+        onSave={saveEdit}
+        onDelete={deleteItem}
+        onClose={closeEditDialog}
+      />
     </div>
   )
 }
