@@ -51,27 +51,26 @@ export default function App() {
     init()
 
     const { data: listener } = supabase.auth.onAuthStateChange(
-  (event, data) => {
-    if (!mounted) return
+      (event, data) => {
+        if (!mounted) return
 
-    console.log("AUTH EVENT:", event)
+        console.log("AUTH EVENT:", event)
 
-    // Only update session when Supabase provides a real session
-    if (data.session) {
-      setSession(data.session)
-    }
+        const nextSession = data?.session ?? null
+        if (nextSession) {
+          setSession(nextSession)
+        }
 
-    // Explicit logout handler
-    if (event === "SIGNED_OUT") {
-      setSession(null)
-    }
-  }
-)
+        if (event === "SIGNED_OUT") {
+          setSession(null)
+        }
+      }
+    )
 
 
     return () => {
       mounted = false
-      listener.subscription.unsubscribe()
+      listener?.subscription?.unsubscribe()
     }
   }, [])
 

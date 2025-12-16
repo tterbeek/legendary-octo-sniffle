@@ -150,7 +150,7 @@ export default function ShoppingList({ supabase, user, currentList, onShareList,
       const next = prev + increment
       try {
         localStorage.setItem(tipKeys.actions, String(next))
-        if (next >= 5 && !localStorage.getItem('groc_support_opened')) {
+        if (next >= 30 && !localStorage.getItem('groc_support_opened')) {
           localStorage.setItem('groc_support_pending', '1')
           window.dispatchEvent(new CustomEvent('open-support-modal'))
         }
