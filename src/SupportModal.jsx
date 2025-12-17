@@ -20,7 +20,7 @@ export default function SupportModal({ onClose }) {
         </p>
 
         <a
-          href="https://www.buymeacoffee.com/grocli"
+          href="https://ko-fi.com/grocli"
           target="_blank"
           rel="noopener noreferrer"
           className="inline-block bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg font-medium transition-colors"
