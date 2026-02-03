@@ -49,7 +49,7 @@ export default function EditItemDialog({
 
   const filteredSuggestions = useMemo(() => {
     const query = category.trim()
-    if (!query || query.length < 1) return []
+    if (!query || query.length < 1) return categories
 
     const lowerQuery = query.toLowerCase()
     return categories.filter((c) => c.toLowerCase().includes(lowerQuery))
@@ -143,7 +143,7 @@ export default function EditItemDialog({
                   setShowSuggestions(true)
                 }}
                 onFocus={() => {
-                  if (category.trim().length >= 1) setShowSuggestions(true)
+                  setShowSuggestions(true)
                 }}
                 onBlur={() => {
                   // Delay so clicks on suggestions still register before hiding

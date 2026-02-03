@@ -23,6 +23,7 @@ export default function App() {
   const [shareName, setShareName] = useState('')
   const [sharing, setSharing] = useState(false)
   const [supportOpen, setSupportOpen] = useState(false)
+  const [manageOpen, setManageOpen] = useState(false)
 
   // Splashscreen
   const [showLogo, setShowLogo] = useState(false)
@@ -218,6 +219,24 @@ export default function App() {
     setShareDialogOpen(true)
   }
 
+  const openManageItems = (list) => {
+    const targetList = list || currentList
+    if (!targetList) return
+    if (currentList?.id !== targetList.id) {
+      setCurrentList(targetList)
+    }
+    try {
+      localStorage.setItem('lastUsedListId', targetList.id)
+    } catch {}
+    setManageOpen(true)
+  }
+
+  const closeManageItems = () => setManageOpen(false)
+
+  useEffect(() => {
+    if (!currentList) setManageOpen(false)
+  }, [currentList])
+
   const closeShareDialog = () => {
     setShareDialogOpen(false)
     setShareTarget(null)
@@ -314,6 +333,7 @@ export default function App() {
           closeSidebar={() => setSidebarOpen(false)}
           onShareList={openShareDialog}
           onOpenSupport={openSupportManually}
+          onOpenManage={openManageItems}
         />
       )}
 
@@ -344,6 +364,8 @@ export default function App() {
                 currentList={currentList}
                 onShareList={openShareDialog}
                 shareLoading={sharing}
+                manageOpen={manageOpen}
+                onCloseManage={closeManageItems}
               />
               ) : (
                 <div className="flex flex-col items-center justify-center min-h-screen text-center">

@@ -2,9 +2,32 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import FitText from './FitText'
 import CartHeader from './CartHeader'
 import EditItemDialog from './EditItemDialog'
+import ManageItemsModal from './ManageItemsModal'
 import useLongPress from "./useLongPress"
 
-export default function ShoppingList({ supabase, user, currentList, onShareList, shareLoading = false }) {
+const itemSortCollator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true })
+
+const toTimestamp = (value) => {
+  const time = new Date(value || 0).getTime()
+  return Number.isNaN(time) ? 0 : time
+}
+
+const normalizeCategory = (cat) => {
+  if (!cat) return null
+  const trimmed = cat.trim()
+  if (!trimmed) return null
+  return trimmed.toLowerCase()
+}
+
+export default function ShoppingList({
+  supabase,
+  user,
+  currentList,
+  onShareList,
+  shareLoading = false,
+  manageOpen = false,
+  onCloseManage
+}) {
   const [items, setItems] = useState([])
   const [suggestions, setSuggestions] = useState([])
   const [input, setInput] = useState('')
@@ -22,6 +45,9 @@ export default function ShoppingList({ supabase, user, currentList, onShareList,
   const [tip2TargetId, setTip2TargetId] = useState(null)
   const [showTip3, setShowTip3] = useState(false)
   const [tipActionLabel, setTipActionLabel] = useState('Long-press')
+  const [itemSortMode, setItemSortMode] = useState('updated')
+  const [sortMenuOpen, setSortMenuOpen] = useState(false)
+  const sortMenuRef = useRef(null)
   const tipKeys = {
     tip1: 'groc_tip1_shown',
     tip2: 'groc_tip2_shown',
@@ -424,6 +450,56 @@ export default function ShoppingList({ supabase, user, currentList, onShareList,
   }, [items, suggestions])
   const hasCategories = categories.length > 0
 
+  const sortedActiveItems = useMemo(() => {
+    return [...items].sort((a, b) => {
+      const timeCompare = toTimestamp(a.updated_at) - toTimestamp(b.updated_at)
+      if (timeCompare !== 0) return timeCompare
+      return itemSortCollator.compare(String(a.id), String(b.id))
+    })
+  }, [items])
+
+  const groupedActiveItems = useMemo(() => {
+    const groups = new Map()
+    const uncategorized = []
+
+    sortedActiveItems.forEach(item => {
+      const normalized = normalizeCategory(item.category)
+      if (!normalized) {
+        uncategorized.push(item)
+        return
+      }
+
+      const displayName = (item.category || '').trim()
+      if (!groups.has(normalized)) {
+        groups.set(normalized, { id: normalized, name: displayName, items: [] })
+      }
+      groups.get(normalized).items.push(item)
+    })
+
+    const sortedGroups = Array.from(groups.values()).sort((a, b) => {
+      const groupCompare = itemSortCollator.compare(a.name, b.name)
+      if (groupCompare !== 0) return groupCompare
+      return itemSortCollator.compare(a.id, b.id)
+    })
+
+    if (uncategorized.length > 0) {
+      sortedGroups.push({ id: 'uncategorized', name: 'Uncategorized', items: uncategorized })
+    }
+
+    return sortedGroups
+  }, [sortedActiveItems])
+
+  const categoryDisplayItems = useMemo(
+    () =>
+      groupedActiveItems.flatMap(group =>
+        group.items.map((item, index) => ({
+          item,
+          categoryLabel: index === 0 ? group.name : null
+        }))
+      ),
+    [groupedActiveItems]
+  )
+
   const recentSuggestions = useMemo(() => {
     const sorted = [...filteredSuggestions].sort(
       (a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0)
@@ -431,17 +507,10 @@ export default function ShoppingList({ supabase, user, currentList, onShareList,
     return sorted.slice(0, maxRecent)
   }, [filteredSuggestions, maxRecent])
 
-  const normalizedCategory = (cat) => {
-    if (!cat) return null
-    const trimmed = cat.trim()
-    if (!trimmed) return null
-    return trimmed.toLowerCase()
-  }
-
   const groupedSuggestions = useMemo(() => {
     const groups = new Map()
     filteredSuggestions.forEach(item => {
-      const normalized = normalizedCategory(item.category)
+      const normalized = normalizeCategory(item.category)
       if (!normalized) return
       const displayName = (item.category || "").trim()
       if (!groups.has(normalized)) {
@@ -457,7 +526,7 @@ export default function ShoppingList({ supabase, user, currentList, onShareList,
 
   const uncategorizedSuggestions = useMemo(
     () => filteredSuggestions
-      .filter(item => !normalizedCategory(item.category))
+      .filter(item => !normalizeCategory(item.category))
       .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase())),
     [filteredSuggestions]
   )
@@ -480,6 +549,73 @@ export default function ShoppingList({ supabase, user, currentList, onShareList,
     if (!stillExists) setActiveItem(null)
   }, [items, activeItem])
 
+  useEffect(() => {
+    if (!sortMenuOpen) return
+    const handleClickOutsideSortMenu = (event) => {
+      if (sortMenuRef.current && !sortMenuRef.current.contains(event.target)) {
+        setSortMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutsideSortMenu)
+    return () => document.removeEventListener('mousedown', handleClickOutsideSortMenu)
+  }, [sortMenuOpen])
+
+  const activeSortLabel = itemSortMode === 'category' ? 'Category' : 'Updated'
+  const otherSortMode = itemSortMode === 'category' ? 'updated' : 'category'
+  const otherSortLabel = otherSortMode === 'category' ? 'Category' : 'Updated'
+
+  const renderItemTile = (item, { categoryLabel = null } = {}) => (
+    <li key={item.id}>
+      <div
+        {...bindItem({
+          onLongPress: () => setActiveItem(item),
+          onTap: () => markChecked(item),
+          onRightClick: () => setActiveItem(item)
+        })}
+        className="relative bg-customGreen text-white font-bold flex flex-col items-center justify-center h-24 rounded-lg shadow cursor-pointer select-none hover:scale-105 transition-transform"
+      >
+        {categoryLabel && (
+          <div className="absolute top-1 left-1 text-[11px] font-semibold leading-none text-white/90 pointer-events-none">
+            {categoryLabel}
+          </div>
+        )}
+        {showTip1 && item.id === tip1TargetId && (
+          <div
+            className="absolute -top-3 left-1/2 -translate-x-1/2 z-20 bg-white text-gray-800 text-xs px-4 py-3 rounded shadow border border-gray-200 w-80 text-left"
+            onPointerDown={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+            }}
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+            }}
+          >
+            Tip: {tipActionLabel} an item to add a quantity
+            <button
+              className="ml-2 text-customGreen"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setShowTip1(false)
+              }}
+            >
+              Got it
+            </button>
+          </div>
+        )}
+        {item.name.split(' ').map((w, i) => (
+          <FitText key={i} text={w} maxFont={20} minFont={10} padding={16} />
+        ))}
+        {item.quantity > 1 && (
+          <div className="absolute top-1 right-1 bg-white text-customGreen font-bold text-xs px-2 py-0.5 rounded-full">
+            {item.quantity}
+          </div>
+        )}
+      </div>
+    </li>
+  )
+
   // -------------------------------------------------
   // Render
   // -------------------------------------------------
@@ -492,106 +628,98 @@ export default function ShoppingList({ supabase, user, currentList, onShareList,
         </div>
       )}
 
-      <div className="w-full max-w-2xl mb-4">
+      <div className="w-full max-w-2xl mb-1">
         <div className="flex items-center justify-between gap-3">
           <div className="flex-1 flex justify-center">
             <CartHeader title={currentList?.name || 'Shopping List'} />
           </div>
-          <div className="flex-shrink-0 flex items-center justify-end mt-[-4px] relative">
-            <button
-              onClick={() => onShareList?.(currentList)}
-              disabled={!currentList || shareLoading}
-              className="p-3 text-customGreen hover:text-customGreen rounded-full disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-customGreen/30 transition-colors"
-              aria-label="Share list"
-            >
-              <span className="flex items-center gap-1">
-                <svg
-                  aria-hidden="true"
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 7m-4 0a4 4 0 1 0 8 0a4 4 0 1 0 -8 0" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16 3.13a4 4 0 0 1 0 7.75" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21v-2a4 4 0 0 0 -3 -3.85" />
-                </svg>
-                {memberCount > 1 && (
-                  <span className="text-sm font-semibold text-gray-700">{memberCount}</span>
-                )}
-              </span>
-            </button>
-            {showTip3 && (
-              <div className="absolute top-full right-0 mt-1 z-20 bg-white text-gray-800 text-xs px-4 py-3 rounded shadow border border-gray-200 w-80 text-left">
-                Share this list to sync with others in real time
-                <button
-                  className="ml-2 text-customGreen"
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    setShowTip3(false)
-                  }}
-                >
-                  Got it
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="w-full max-w-2xl bg-white p-4 rounded-2xl shadow">
-
-        {/* ITEMS */}
-        <ul className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-          {items.map(item => (
-            <li
-              key={item.id}
-                    {...bindItem({
-                      onLongPress: () => setActiveItem(item),
-                      onTap: () => markChecked(item),
-                      onRightClick: () => setActiveItem(item)
-                    })}
-              className="relative bg-customGreen text-white font-bold flex flex-col items-center justify-center h-24 rounded-lg shadow cursor-pointer select-none hover:scale-105 transition-transform"
-            >
-              {showTip1 && item.id === tip1TargetId && (
-                <div
-                  className="absolute -top-3 left-1/2 -translate-x-1/2 z-20 bg-white text-gray-800 text-xs px-4 py-3 rounded shadow border border-gray-200 w-80 text-left"
-                  onPointerDown={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                  }}
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                  }}
-                >
-                  Tip: {tipActionLabel} an item to add a quantity
+          <div className="flex-shrink-0 flex flex-col items-end mt-[-4px]">
+            <div className="relative">
+              <button
+                onClick={() => onShareList?.(currentList)}
+                disabled={!currentList || shareLoading}
+                className="p-3 text-customGreen hover:text-customGreen rounded-full disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-customGreen/30 transition-colors"
+                aria-label="Share list"
+              >
+                <span className="flex items-center gap-1">
+                  <svg
+                    aria-hidden="true"
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 7m-4 0a4 4 0 1 0 8 0a4 4 0 1 0 -8 0" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16 3.13a4 4 0 0 1 0 7.75" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21v-2a4 4 0 0 0 -3 -3.85" />
+                  </svg>
+                  {memberCount > 1 && (
+                    <span className="text-sm font-semibold text-gray-700">{memberCount}</span>
+                  )}
+                </span>
+              </button>
+              {showTip3 && (
+                <div className="absolute top-full right-0 mt-1 z-20 bg-white text-gray-800 text-xs px-4 py-3 rounded shadow border border-gray-200 w-80 text-left">
+                  Share this list to sync with others in real time
                   <button
                     className="ml-2 text-customGreen"
                     onClick={(e) => {
                       e.preventDefault()
                       e.stopPropagation()
-                      setShowTip1(false)
+                      setShowTip3(false)
                     }}
                   >
                     Got it
                   </button>
                 </div>
               )}
-              {item.name.split(' ').map((w, i) => (
-                <FitText key={i} text={w} maxFont={20} minFont={10} padding={16} />
-              ))}
-              {item.quantity > 1 && (
-                <div className="absolute top-1 right-1 bg-white text-customGreen font-bold text-xs px-2 py-0.5 rounded-full">
-                  {item.quantity}
+            </div>
+            <div ref={sortMenuRef} className="relative mt-0.5">
+              <button
+                type="button"
+                onClick={() => setSortMenuOpen((prev) => !prev)}
+                className="relative pr-3 text-xs text-gray-500"
+                aria-label="Sort items"
+                aria-expanded={sortMenuOpen}
+              >
+                <span>{activeSortLabel}</span>
+                <span aria-hidden="true" className="absolute right-0 top-1/2 -translate-y-1/2">▾</span>
+              </button>
+              {sortMenuOpen && (
+                <div className="absolute right-0 top-full mt-1 z-20">
+                  <button
+                    type="button"
+                    className="pr-3 pl-2 py-0.5 text-xs text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200"
+                    onClick={() => {
+                      setItemSortMode(otherSortMode)
+                      setSortMenuOpen(false)
+                    }}
+                  >
+                    <span>{otherSortLabel}</span>
+                  </button>
                 </div>
               )}
-            </li>
-          ))}
-        </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="w-full max-w-2xl bg-white px-4 pt-2 pb-4 rounded-2xl shadow">
+
+        {/* ITEMS */}
+        {itemSortMode === 'updated' ? (
+          <ul className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+            {sortedActiveItems.map(item => renderItemTile(item))}
+          </ul>
+        ) : (
+          <ul className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+            {categoryDisplayItems.map(({ item, categoryLabel }) =>
+              renderItemTile(item, { categoryLabel })
+            )}
+          </ul>
+        )}
 
         {/* QUANTITY MODAL */}
         {activeItem && (
@@ -769,6 +897,14 @@ export default function ShoppingList({ supabase, user, currentList, onShareList,
         onSave={saveEdit}
         onDelete={deleteItem}
         onClose={closeEditDialog}
+      />
+
+      <ManageItemsModal
+        open={manageOpen}
+        listName={currentList?.name}
+        listId={currentList?.id}
+        supabase={supabase}
+        onClose={onCloseManage}
       />
     </div>
   )

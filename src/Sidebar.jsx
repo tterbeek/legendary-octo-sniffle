@@ -3,7 +3,17 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from './supabaseClient'
 
 
-export default function Sidebar({ lists, setLists, currentList, setCurrentList, session, closeSidebar, onShareList, onOpenSupport }) {
+export default function Sidebar({
+  lists,
+  setLists,
+  currentList,
+  setCurrentList,
+  session,
+  closeSidebar,
+  onShareList,
+  onOpenSupport,
+  onOpenManage
+}) {
   const [newListName, setNewListName] = useState('')
   const [loading, setLoading] = useState(false)
   const [activeMenu, setActiveMenu] = useState(null)
@@ -161,6 +171,12 @@ export default function Sidebar({ lists, setLists, currentList, setCurrentList, 
     onShareList?.(list)
   }
 
+  const handleManageList = (list) => {
+    setActiveMenu(null)
+    onOpenManage?.(list)
+    closeSidebar()
+  }
+
   const handleDeleteList = async (list) => {
     if (!window.confirm(`Delete list "${list.name}"? This cannot be undone.`)) return
     try {
@@ -296,6 +312,10 @@ export default function Sidebar({ lists, setLists, currentList, setCurrentList, 
                   ref={el => menuRefs.current[list.id] = el}
                   className="absolute right-0 top-full mt-1 w-32 bg-white text-gray-700 rounded shadow-lg z-50"
                 >
+                  <button
+                    className="block w-full text-left px-2 py-1 hover:bg-gray-100"
+                    onClick={() => handleManageList(list)}
+                  >Manage list</button>
                   {list.owner_id === session.user.id && (
                     <button
                       className="block w-full text-left px-2 py-1 hover:bg-gray-100"
