@@ -21,7 +21,7 @@ export default function CartHeader({ title = 'Shopping List' }) {
   }, []);
 
   return (
-    <div className="flex items-center justify-center gap-2 mb-4 mt-2 overflow-hidden">
+    <div className="flex items-center justify-center gap-2 mb-3 mt-0 sm:mb-4 sm:mt-2 overflow-hidden">
       {/* Cart drives in from the left */}
       <motion.img
         src="/groclilogorectangle.png"

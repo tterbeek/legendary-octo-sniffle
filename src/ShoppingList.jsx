@@ -1,8 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
 import FitText from './FitText'
 import CartHeader from './CartHeader'
-import EditItemDialog from './EditItemDialog'
-import ManageItemsModal from './ManageItemsModal'
 import useLongPress from "./useLongPress"
 
 const itemSortCollator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true })
@@ -18,6 +16,9 @@ const normalizeCategory = (cat) => {
   if (!trimmed) return null
   return trimmed.toLowerCase()
 }
+
+const EditItemDialog = lazy(() => import('./EditItemDialog'))
+const ManageItemsModal = lazy(() => import('./ManageItemsModal'))
 
 export default function ShoppingList({
   supabase,
@@ -46,6 +47,7 @@ export default function ShoppingList({
   const [showTip3, setShowTip3] = useState(false)
   const [tipActionLabel, setTipActionLabel] = useState('Long-press')
   const [itemSortMode, setItemSortMode] = useState('updated')
+  const [sortModeListId, setSortModeListId] = useState(null)
   const [sortMenuOpen, setSortMenuOpen] = useState(false)
   const sortMenuRef = useRef(null)
   const tipKeys = {
@@ -550,6 +552,34 @@ export default function ShoppingList({
   }, [items, activeItem])
 
   useEffect(() => {
+    const listId = currentList?.id
+    if (!listId) {
+      setSortModeListId(null)
+      return
+    }
+
+    let nextMode = 'updated'
+    try {
+      const storedMode = localStorage.getItem(`groc_item_sort_mode_${listId}`)
+      if (storedMode === 'updated' || storedMode === 'category') {
+        nextMode = storedMode
+      }
+    } catch {}
+
+    setItemSortMode(nextMode)
+    setSortModeListId(listId)
+    setSortMenuOpen(false)
+  }, [currentList?.id])
+
+  useEffect(() => {
+    const listId = currentList?.id
+    if (!listId || sortModeListId !== listId) return
+    try {
+      localStorage.setItem(`groc_item_sort_mode_${listId}`, itemSortMode)
+    } catch {}
+  }, [itemSortMode, currentList?.id, sortModeListId])
+
+  useEffect(() => {
     if (!sortMenuOpen) return
     const handleClickOutsideSortMenu = (event) => {
       if (sortMenuRef.current && !sortMenuRef.current.contains(event.target)) {
@@ -620,7 +650,7 @@ export default function ShoppingList({
   // Render
   // -------------------------------------------------
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center p-6">
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center px-6 pb-6 pt-2 sm:p-6">
 
       {dbWarning && (
         <div className="fixed top-0 left-0 right-0 bg-yellow-300 text-center py-2 z-50 font-semibold shadow">
@@ -890,22 +920,30 @@ export default function ShoppingList({
 
       </div>
 
-      <EditItemDialog
-        open={editDialogOpen}
-        item={editItem}
-        categories={categories}
-        onSave={saveEdit}
-        onDelete={deleteItem}
-        onClose={closeEditDialog}
-      />
+      {editDialogOpen && (
+        <Suspense fallback={null}>
+          <EditItemDialog
+            open={editDialogOpen}
+            item={editItem}
+            categories={categories}
+            onSave={saveEdit}
+            onDelete={deleteItem}
+            onClose={closeEditDialog}
+          />
+        </Suspense>
+      )}
 
-      <ManageItemsModal
-        open={manageOpen}
-        listName={currentList?.name}
-        listId={currentList?.id}
-        supabase={supabase}
-        onClose={onCloseManage}
-      />
+      {manageOpen && (
+        <Suspense fallback={null}>
+          <ManageItemsModal
+            open={manageOpen}
+            listName={currentList?.name}
+            listId={currentList?.id}
+            supabase={supabase}
+            onClose={onCloseManage}
+          />
+        </Suspense>
+      )}
     </div>
   )
 }
