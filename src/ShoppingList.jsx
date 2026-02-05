@@ -493,12 +493,7 @@ export default function ShoppingList({
 
   const categoryDisplayItems = useMemo(
     () =>
-      groupedActiveItems.flatMap(group =>
-        group.items.map((item, index) => ({
-          item,
-          categoryLabel: index === 0 ? group.name : null
-        }))
-      ),
+      groupedActiveItems.flatMap(group => group.items),
     [groupedActiveItems]
   )
 
@@ -594,7 +589,7 @@ export default function ShoppingList({
   const otherSortMode = itemSortMode === 'category' ? 'updated' : 'category'
   const otherSortLabel = otherSortMode === 'category' ? 'Category' : 'Updated'
 
-  const renderItemTile = (item, { categoryLabel = null } = {}) => (
+  const renderItemTile = (item) => (
     <li key={item.id}>
       <div
         {...bindItem({
@@ -604,11 +599,6 @@ export default function ShoppingList({
         })}
         className="relative bg-customGreen text-white font-bold flex flex-col items-center justify-center h-24 rounded-lg shadow cursor-pointer select-none hover:scale-105 transition-transform"
       >
-        {categoryLabel && (
-          <div className="absolute top-1 left-1 text-[11px] font-semibold leading-none text-white/90 pointer-events-none">
-            {categoryLabel}
-          </div>
-        )}
         {showTip1 && item.id === tip1TargetId && (
           <div
             className="absolute -top-3 left-1/2 -translate-x-1/2 z-20 bg-white text-gray-800 text-xs px-4 py-3 rounded shadow border border-gray-200 w-80 text-left"
@@ -659,16 +649,17 @@ export default function ShoppingList({
       )}
 
       <div className="w-full max-w-2xl mb-1">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex-1 flex justify-center">
+        <div className="flex items-center justify-between gap-2">
+          <div className="w-[72px] flex-shrink-0" aria-hidden="true" />
+          <div className="flex-1 min-w-0 flex justify-center">
             <CartHeader title={currentList?.name || 'Shopping List'} />
           </div>
-          <div className="flex-shrink-0 flex flex-col items-end mt-[-4px]">
+          <div className="w-[72px] flex-shrink-0 flex flex-col items-end mt-[-4px]">
             <div className="relative">
               <button
                 onClick={() => onShareList?.(currentList)}
                 disabled={!currentList || shareLoading}
-                className="p-3 text-customGreen hover:text-customGreen rounded-full disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-customGreen/30 transition-colors"
+                className="mt-[12px] p-3 text-customGreen hover:text-customGreen rounded-full disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-customGreen/30 transition-colors"
                 aria-label="Share list"
               >
                 <span className="flex items-center gap-1">
@@ -745,9 +736,7 @@ export default function ShoppingList({
           </ul>
         ) : (
           <ul className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-            {categoryDisplayItems.map(({ item, categoryLabel }) =>
-              renderItemTile(item, { categoryLabel })
-            )}
+            {categoryDisplayItems.map(item => renderItemTile(item))}
           </ul>
         )}
 

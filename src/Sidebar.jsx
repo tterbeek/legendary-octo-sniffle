@@ -1,6 +1,7 @@
 // src/Sidebar.jsx
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from './supabaseClient'
+import { IconLogout } from '@tabler/icons-react'
 
 
 export default function Sidebar({
@@ -9,6 +10,7 @@ export default function Sidebar({
   currentList,
   setCurrentList,
   session,
+  isOpen,
   closeSidebar,
   onShareList,
   onOpenSupport,
@@ -103,6 +105,9 @@ export default function Sidebar({
   // -----------------------------
   useEffect(() => {
     const handleClickOutsideSidebar = (e) => {
+      if (e.target instanceof Element && e.target.closest('[data-sidebar-toggle="true"]')) {
+        return
+      }
       if (sidebarRef.current && !sidebarRef.current.contains(e.target)) {
         closeSidebar()
       }
@@ -212,10 +217,14 @@ export default function Sidebar({
   // Render
   // -----------------------------
   return (
-    <div ref={sidebarRef} className="fixed top-0 left-0 w-64 h-full bg-white shadow-lg p-4 z-40 flex flex-col">
-      <div className="flex justify-end items-center gap-2 mb-4 pr-2">
+    <div
+      ref={sidebarRef}
+      className="fixed top-0 left-0 w-64 h-full bg-white shadow-lg p-4 z-40 flex flex-col transition-transform duration-300 ease-out"
+      style={{ transform: isOpen ? 'translateX(0)' : 'translateX(-100%)' }}
+    >
+      <div className="flex justify-end items-center mb-4">
         <button
-          className="p-1 text-gray-500 hover:text-gray-700 opacity-50"
+          className="mt-[11px] mr-[5px] p-1 text-gray-500 hover:text-gray-700 opacity-50"
           onClick={async () => {
             try {
               await supabase.auth.signOut()
@@ -225,27 +234,7 @@ export default function Sidebar({
           }}
           aria-label="Log out"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="w-4 h-4"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M14 8l2 2-2 2" />
-            <path d="M3 12h13" />
-            <path d="M13 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6" />
-          </svg>
-        </button>
-        <button
-          className="p-1 text-gray-500 hover:text-gray-700"
-          onClick={closeSidebar}
-          aria-label="Close sidebar"
-        >
-          ✕
+          <IconLogout size={16} stroke={2} />
         </button>
       </div>
 

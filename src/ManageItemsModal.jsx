@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true })
 
@@ -33,6 +33,8 @@ export default function ManageItemsModal({
   const [categorySaving, setCategorySaving] = useState(false)
   const [actionBusy, setActionBusy] = useState(false)
   const [toastMessage, setToastMessage] = useState('')
+  const [sortMenuOpen, setSortMenuOpen] = useState(false)
+  const sortMenuRef = useRef(null)
 
   useEffect(() => {
     if (!open || !listId) return
@@ -79,6 +81,10 @@ export default function ManageItemsModal({
     if (!open) return
     const onKeyDown = (event) => {
       if (event.key !== 'Escape') return
+      if (sortMenuOpen) {
+        setSortMenuOpen(false)
+        return
+      }
       if (showCategoryDialog) {
         setShowCategoryDialog(false)
         setShowCategorySuggestions(false)
@@ -89,10 +95,24 @@ export default function ManageItemsModal({
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [open, showCategoryDialog, onClose])
+  }, [open, showCategoryDialog, sortMenuOpen, onClose])
+
+  useEffect(() => {
+    if (!sortMenuOpen) return
+    const handleClickOutsideSortMenu = (event) => {
+      if (sortMenuRef.current && !sortMenuRef.current.contains(event.target)) {
+        setSortMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutsideSortMenu)
+    return () => document.removeEventListener('mousedown', handleClickOutsideSortMenu)
+  }, [sortMenuOpen])
 
   const selectedCount = selectedIds.size
   const canRunActions = selectedCount > 0 && !actionBusy && !categorySaving
+  const activeSortLabel = sortMode === 'category' ? 'Category' : 'Alphabetical'
+  const otherSortMode = sortMode === 'category' ? 'alphabetical' : 'category'
+  const otherSortLabel = otherSortMode === 'category' ? 'Category' : 'Alphabetical'
 
   const existingCategories = useMemo(() => {
     const unique = new Map()
@@ -273,63 +293,42 @@ export default function ManageItemsModal({
                 Manage {listName || 'Shopping List'}
               </h2>
             </div>
-            {selectedCount > 0 && (
-              <div className="hidden lg:flex items-center gap-2 text-sm">
-                <span className="font-semibold text-gray-700">{selectedCount} selected</span>
-                <button
-                  type="button"
-                  className="px-3 py-1 rounded border border-gray-200 hover:bg-gray-100 disabled:opacity-60"
-                  onClick={handleOpenSetCategory}
-                  disabled={!canRunActions}
-                >
-                  Set category
-                </button>
-                <button
-                  type="button"
-                  className="px-3 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-60"
-                  onClick={deleteSelected}
-                  disabled={!canRunActions}
-                >
-                  Delete
-                </button>
-                <button
-                  type="button"
-                  className="px-3 py-1 rounded border border-gray-200 hover:bg-gray-100"
-                  onClick={selectAll}
-                  disabled={items.length === 0}
-                >
-                  Select all
-                </button>
-                <button
-                  type="button"
-                  className="px-3 py-1 rounded border border-gray-200 hover:bg-gray-100"
-                  onClick={clearSelection}
-                >
-                  Clear
-                </button>
-              </div>
-            )}
+            <div ref={sortMenuRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setSortMenuOpen((prev) => !prev)}
+                className="relative pr-3 text-xs text-gray-500"
+                aria-label="Sort items"
+                aria-expanded={sortMenuOpen}
+              >
+                <span>{activeSortLabel}</span>
+                <span aria-hidden="true" className="absolute right-0 top-1/2 -translate-y-1/2">▾</span>
+              </button>
+              {sortMenuOpen && (
+                <div className="absolute right-0 top-full mt-1 z-20">
+                  <button
+                    type="button"
+                    className="pr-3 pl-2 py-0.5 text-xs text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200"
+                    onClick={() => {
+                      setSortMode(otherSortMode)
+                      setSortMenuOpen(false)
+                    }}
+                  >
+                    <span>{otherSortLabel}</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
-          {selectedCount > 0 && (
-            <div className="lg:hidden flex flex-wrap items-center gap-2 text-sm">
-              <span className="font-semibold text-gray-700 mr-1">{selectedCount} selected</span>
-              <button
-                type="button"
-                className="px-3 py-1 rounded border border-gray-200 hover:bg-gray-100 disabled:opacity-60"
-                onClick={handleOpenSetCategory}
-                disabled={!canRunActions}
-              >
-                Set category
-              </button>
-              <button
-                type="button"
-                className="px-3 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-60"
-                onClick={deleteSelected}
-                disabled={!canRunActions}
-              >
-                Delete
-              </button>
+          <div
+            className={`space-y-2 text-sm ${selectedCount === 0 ? 'opacity-0 pointer-events-none select-none' : ''}`}
+            aria-hidden={selectedCount === 0}
+          >
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <span className="font-semibold text-gray-700 mr-1 text-right">
+                <span className="inline-block w-[2ch] text-right tabular-nums">{selectedCount}</span> selected
+              </span>
               <button
                 type="button"
                 className="px-3 py-1 rounded border border-gray-200 hover:bg-gray-100"
@@ -346,27 +345,26 @@ export default function ManageItemsModal({
                 Clear
               </button>
             </div>
-          )}
-
-          <div className="flex items-center gap-3 text-sm">
-            <span className="text-gray-600 font-medium">Sort:</span>
-            <div className="inline-flex rounded-lg border border-gray-200 p-1">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                className={`px-3 py-1 rounded-md ${sortMode === 'alphabetical' ? 'bg-customGreen text-white' : 'text-gray-700'}`}
-                onClick={() => setSortMode('alphabetical')}
+                className="px-3 py-1 rounded border border-gray-200 hover:bg-gray-100 disabled:opacity-60"
+                onClick={handleOpenSetCategory}
+                disabled={!canRunActions}
               >
-                Alphabetical
+                Set category
               </button>
               <button
                 type="button"
-                className={`px-3 py-1 rounded-md ${sortMode === 'category' ? 'bg-customGreen text-white' : 'text-gray-700'}`}
-                onClick={() => setSortMode('category')}
+                className="px-3 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-60"
+                onClick={deleteSelected}
+                disabled={!canRunActions}
               >
-                Category
+                Delete
               </button>
             </div>
           </div>
+
         </div>
 
         <div className="flex-1 overflow-y-auto p-4">

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import Login from './Login.jsx'
 import ShoppingList from './ShoppingList.jsx'
@@ -17,6 +17,7 @@ export default function App() {
   const [lists, setLists] = useState([])
   const [currentList, setCurrentList] = useState(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarMounted, setSidebarMounted] = useState(false)
   const [listsLoading, setListsLoading] = useState(true)
   const [shareDialogOpen, setShareDialogOpen] = useState(false)
   const [shareTarget, setShareTarget] = useState(null)
@@ -24,6 +25,33 @@ export default function App() {
   const [sharing, setSharing] = useState(false)
   const [supportOpen, setSupportOpen] = useState(false)
   const [manageOpen, setManageOpen] = useState(false)
+  const sidebarCloseTimerRef = useRef(null)
+  const sidebarOpenFrameRef = useRef(null)
+
+  const openSidebar = () => {
+    if (sidebarCloseTimerRef.current) {
+      clearTimeout(sidebarCloseTimerRef.current)
+      sidebarCloseTimerRef.current = null
+    }
+    if (sidebarOpenFrameRef.current) {
+      cancelAnimationFrame(sidebarOpenFrameRef.current)
+      sidebarOpenFrameRef.current = null
+    }
+
+    if (!sidebarMounted) {
+      setSidebarMounted(true)
+      setSidebarOpen(false)
+      sidebarOpenFrameRef.current = requestAnimationFrame(() => {
+        setSidebarOpen(true)
+        sidebarOpenFrameRef.current = null
+      })
+      return
+    }
+
+    setSidebarOpen(true)
+  }
+
+  const closeSidebar = () => setSidebarOpen(false)
 
   // Splashscreen
   const [showLogo, setShowLogo] = useState(false)
@@ -115,6 +143,7 @@ export default function App() {
       if (deduped.length === 0) {
         setLists([])
         setCurrentList(null)
+        setSidebarMounted(true)
         setSidebarOpen(true)
         setListsLoading(false)
         return
@@ -237,6 +266,33 @@ export default function App() {
     if (!currentList) setManageOpen(false)
   }, [currentList])
 
+  useEffect(() => {
+    if (!sidebarMounted || sidebarOpen) return
+
+    sidebarCloseTimerRef.current = setTimeout(() => {
+      setSidebarMounted(false)
+      sidebarCloseTimerRef.current = null
+    }, 300)
+
+    return () => {
+      if (sidebarCloseTimerRef.current) {
+        clearTimeout(sidebarCloseTimerRef.current)
+        sidebarCloseTimerRef.current = null
+      }
+    }
+  }, [sidebarMounted, sidebarOpen])
+
+  useEffect(() => {
+    return () => {
+      if (sidebarCloseTimerRef.current) {
+        clearTimeout(sidebarCloseTimerRef.current)
+      }
+      if (sidebarOpenFrameRef.current) {
+        cancelAnimationFrame(sidebarOpenFrameRef.current)
+      }
+    }
+  }, [])
+
   const closeShareDialog = () => {
     setShareDialogOpen(false)
     setShareTarget(null)
@@ -323,27 +379,37 @@ export default function App() {
   return (
     <>
       <BrowserRouter>
-      {sidebarOpen && (
+      {sidebarMounted && (
         <Sidebar
           lists={lists}
           setLists={setLists}
           currentList={currentList}
           setCurrentList={setCurrentList}
           session={session}
-          closeSidebar={() => setSidebarOpen(false)}
+          closeSidebar={closeSidebar}
           onShareList={openShareDialog}
           onOpenSupport={openSupportManually}
           onOpenManage={openManageItems}
+          isOpen={sidebarOpen}
         />
       )}
 
         <button
-          className={`fixed top-4 left-4 z-50 p-3 rounded text-xl transition-colors ${
+          className={`fixed top-4 left-4 z-50 p-3 rounded transition-colors ${
             sidebarOpen ? 'bg-white' : 'bg-gray-50'
           }`}
-          onClick={() => setSidebarOpen(true)}
+          onClick={() => {
+            if (sidebarOpen) closeSidebar()
+            else openSidebar()
+          }}
+          aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
+          data-sidebar-toggle="true"
         >
-          ☰
+          {sidebarOpen ? (
+            <span className="text-base leading-none">✕</span>
+          ) : (
+            <span className="text-xl leading-none">☰</span>
+          )}
         </button>
 
         <Routes>

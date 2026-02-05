@@ -24,7 +24,7 @@ export default function CartHeader({ title = 'Shopping List' }) {
     <div className="flex items-center justify-center gap-2 mb-3 mt-0 sm:mb-4 sm:mt-2 overflow-hidden">
       {/* Cart drives in from the left */}
       <motion.img
-        src="/groclilogorectangle.png"
+        src="/icon-512x512-v2.png"
         alt="GrocLi Logo"
         className="h-9 w-auto drop-shadow-sm"
         initial={{ x: -100, opacity: 0, rotate: -10 }}
@@ -55,7 +55,7 @@ export default function CartHeader({ title = 'Shopping List' }) {
       <h1
         ref={titleRef}
         id="listTitle"
-        className="text-xl sm:text-2xl font-bold text-gray-800 select-none"
+        className="text-lg sm:text-2xl font-bold text-gray-800 select-none whitespace-nowrap"
       >
         {title}
       </h1>
