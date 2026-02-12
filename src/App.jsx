@@ -56,12 +56,19 @@ export default function App() {
   // Splashscreen
   const [showLogo, setShowLogo] = useState(false)
   useEffect(() => {
-    const lastShown = parseInt(localStorage.getItem('grocLiSplashTime'), 10)
-    const FOUR_HOURS = 4 * 60 * 60 * 1000
+    const now = new Date()
+    const todayKey = now.toISOString().slice(0, 10)
+    const stored = localStorage.getItem('grocLiSplashTime')
+    const lastDate =
+      stored && /^\d{4}-\d{2}-\d{2}$/.test(stored)
+        ? stored
+        : stored && !Number.isNaN(Number(stored))
+        ? new Date(Number(stored)).toISOString().slice(0, 10)
+        : null
 
-    if (!lastShown || Date.now() - lastShown > FOUR_HOURS) {
+    if (!lastDate || lastDate !== todayKey) {
       setShowLogo(true)
-      localStorage.setItem('grocLiSplashTime', Date.now().toString())
+      localStorage.setItem('grocLiSplashTime', todayKey)
     }
   }, [])
 

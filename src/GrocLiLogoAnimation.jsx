@@ -3,6 +3,7 @@ import React from 'react';
 
 export default function GrocLiLogoAnimation({ onFinish }) {
   const screenWidth = typeof window !== 'undefined' ? window.innerWidth : 1000;
+  const duration = 3.5 * 0.75;
 
   return (
     <div className="relative flex items-center justify-center h-screen bg-[#f9f9f7] overflow-hidden">
@@ -21,7 +22,7 @@ export default function GrocLiLogoAnimation({ onFinish }) {
           x: [0, -20, screenWidth + 400],
         }}
         transition={{
-          duration: 3.5,
+          duration,
           ease: [0.42, 0, 0.58, 1], // smooth ease-in-out acceleration curve
           times: [0, 0.25, 0.6, 1],
         }}
@@ -40,7 +41,7 @@ export default function GrocLiLogoAnimation({ onFinish }) {
           scale: [0.9, 1, 1, 1.05], // small growth during motion
         }}
         transition={{
-          duration: 3.5,
+          duration,
           ease: [0.42, 0, 0.58, 1],
           times: [0, 0.25, 0.6, 1], // left = decelerate, right = accelerate
         }}
