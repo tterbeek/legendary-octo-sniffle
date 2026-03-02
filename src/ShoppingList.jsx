@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import FitText from './FitText'
 import CartHeader from './CartHeader'
 import useLongPress from "./useLongPress"
@@ -50,6 +50,13 @@ export default function ShoppingList({
   const [sortModeListId, setSortModeListId] = useState(null)
   const [sortMenuOpen, setSortMenuOpen] = useState(false)
   const sortMenuRef = useRef(null)
+  const listContainerRef = useRef(null)
+  const tip1AnchorRef = useRef(null)
+  const tip1BoxRef = useRef(null)
+  const tip2AnchorRef = useRef(null)
+  const tip2BoxRef = useRef(null)
+  const [tip1Style, setTip1Style] = useState(null)
+  const [tip2Style, setTip2Style] = useState(null)
   const tipKeys = {
     tip1: 'groc_tip1_shown',
     tip2: 'groc_tip2_shown',
@@ -57,6 +64,88 @@ export default function ShoppingList({
     actions: 'groc_tip_actions',
     checked: 'groc_tip_checked'
   }
+  const stopTipEvent = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+
+  useLayoutEffect(() => {
+    if (!showTip1) return
+    const anchor = tip1AnchorRef.current
+    const box = tip1BoxRef.current
+    const container = listContainerRef.current
+    if (!anchor || !box || !container) return
+
+    const update = () => {
+      const anchorRect = anchor.getBoundingClientRect()
+      const containerRect = container.getBoundingClientRect()
+      const boxRect = box.getBoundingClientRect()
+
+      const padding = 8
+      const desiredLeft =
+        anchorRect.left +
+        anchorRect.width / 2 -
+        containerRect.left -
+        boxRect.width / 2
+      const maxLeft = containerRect.width - boxRect.width - padding
+      const clampedLeft = Math.min(Math.max(desiredLeft, padding), Math.max(padding, maxLeft))
+
+      let top = anchorRect.top - containerRect.top - boxRect.height - 12
+      if (top < padding) {
+        top = anchorRect.bottom - containerRect.top + 8
+      }
+
+      setTip1Style({ left: `${clampedLeft}px`, top: `${top}px` })
+    }
+
+    update()
+    const handleResize = () => requestAnimationFrame(update)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [showTip1, tip1TargetId, tipActionLabel])
+
+  useLayoutEffect(() => {
+    if (!showTip2) return
+    const anchor = tip2AnchorRef.current
+    const box = tip2BoxRef.current
+    const container = listContainerRef.current
+    if (!anchor || !box || !container) return
+
+    const update = () => {
+      const anchorRect = anchor.getBoundingClientRect()
+      const containerRect = container.getBoundingClientRect()
+      const boxRect = box.getBoundingClientRect()
+
+      const padding = 8
+      const desiredLeft =
+        anchorRect.left +
+        anchorRect.width / 2 -
+        containerRect.left -
+        boxRect.width / 2
+      const maxLeft = containerRect.width - boxRect.width - padding
+      const clampedLeft = Math.min(Math.max(desiredLeft, padding), Math.max(padding, maxLeft))
+
+      let top = anchorRect.top - containerRect.top - boxRect.height - 12
+      if (top < padding) {
+        top = anchorRect.bottom - containerRect.top + 8
+      }
+
+      setTip2Style({ left: `${clampedLeft}px`, top: `${top}px` })
+    }
+
+    update()
+    const handleResize = () => requestAnimationFrame(update)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [showTip2, tip2TargetId, tipActionLabel])
+
+  useEffect(() => {
+    if (!showTip1) setTip1Style(null)
+  }, [showTip1])
+
+  useEffect(() => {
+    if (!showTip2) setTip2Style(null)
+  }, [showTip2])
 
   // unified long-press handlers
   const { bind: bindItem } = useLongPress()
@@ -597,33 +686,9 @@ export default function ShoppingList({
           onTap: () => markChecked(item),
           onRightClick: () => setActiveItem(item)
         })}
-        className="relative bg-customGreen text-white font-bold flex flex-col items-center justify-center h-24 rounded-lg shadow cursor-pointer select-none hover:scale-105 transition-transform"
+        className={`relative bg-customGreen text-white font-bold flex flex-col items-center justify-center h-24 rounded-lg shadow cursor-pointer select-none hover:scale-105 transition-transform ${showTip1 && item.id === tip1TargetId ? 'z-40' : 'z-0'}`}
+        ref={showTip1 && item.id === tip1TargetId ? tip1AnchorRef : null}
       >
-        {showTip1 && item.id === tip1TargetId && (
-          <div
-            className="absolute -top-3 left-1/2 -translate-x-1/2 z-20 bg-white text-gray-800 text-xs px-4 py-3 rounded shadow border border-gray-200 w-80 text-left"
-            onPointerDown={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
-            }}
-            onClick={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
-            }}
-          >
-            Tip: {tipActionLabel} an item to add a quantity
-            <button
-              className="ml-2 text-customGreen"
-              onClick={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                setShowTip1(false)
-              }}
-            >
-              Got it
-            </button>
-          </div>
-        )}
         {item.name.split(' ').map((w, i) => (
           <FitText key={i} text={w} maxFont={20} minFont={10} padding={16} />
         ))}
@@ -655,7 +720,7 @@ export default function ShoppingList({
             <CartHeader title={currentList?.name || 'Shopping List'} />
           </div>
           <div className="w-[72px] flex-shrink-0 flex flex-col items-end mt-[-4px]">
-            <div className="relative">
+            <div className={`relative ${showTip3 ? 'z-40' : 'z-0'}`}>
               <button
                 onClick={() => onShareList?.(currentList)}
                 disabled={!currentList || shareLoading}
@@ -682,13 +747,26 @@ export default function ShoppingList({
                 </span>
               </button>
               {showTip3 && (
-                <div className="absolute top-full right-0 mt-1 z-20 bg-white text-gray-800 text-xs px-4 py-3 rounded shadow border border-gray-200 w-80 text-left">
+                <div
+                  className="absolute top-full right-0 mt-1 z-[9999] bg-white text-gray-800 text-xs px-4 py-3 pr-8 rounded shadow border border-gray-200 w-80 text-left pointer-events-auto relative"
+                  onPointerDown={stopTipEvent}
+                  onPointerDownCapture={stopTipEvent}
+                  onClick={stopTipEvent}
+                >
+                  <button
+                    type="button"
+                    aria-label="Close tip"
+                    className="absolute top-1 right-1 h-6 w-6 rounded hover:bg-gray-100 text-gray-500"
+                    onClick={() => setShowTip3(false)}
+                    onPointerDown={stopTipEvent}
+                  >
+                    ×
+                  </button>
                   Share this list to sync with others in real time
                   <button
                     className="ml-2 text-customGreen"
                     onClick={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
+                      stopTipEvent(e)
                       setShowTip3(false)
                     }}
                   >
@@ -727,7 +805,7 @@ export default function ShoppingList({
         </div>
       </div>
 
-      <div className="w-full max-w-2xl bg-white px-4 pt-2 pb-4 rounded-2xl shadow">
+      <div ref={listContainerRef} className="relative w-full max-w-2xl bg-white px-4 pt-2 pb-4 rounded-2xl shadow">
 
         {/* ITEMS */}
         {itemSortMode === 'updated' ? (
@@ -818,33 +896,9 @@ export default function ShoppingList({
                         onTap: () => addItem(s.name),
                         onRightClick: () => openEditDialog(s)
                       })}
-                    className="relative bg-gray-400 text-white font-semibold flex flex-col items-center justify-center h-20 rounded-lg shadow cursor-pointer select-none hover:scale-105 transition-transform"
+                    className={`relative bg-gray-400 text-white font-semibold flex flex-col items-center justify-center h-20 rounded-lg shadow cursor-pointer select-none hover:scale-105 transition-transform ${showTip2 && s.id === tip2TargetId ? 'z-40' : 'z-0'}`}
+                    ref={showTip2 && s.id === tip2TargetId ? tip2AnchorRef : null}
                   >
-                    {showTip2 && s.id === tip2TargetId && (
-                      <div
-                        className="absolute -top-3 left-1/2 -translate-x-1/2 z-20 bg-white text-gray-800 text-xs px-4 py-3 rounded shadow border border-gray-200 w-80 text-left"
-                        onPointerDown={(e) => {
-                          e.preventDefault()
-                          e.stopPropagation()
-                        }}
-                        onClick={(e) => {
-                          e.preventDefault()
-                          e.stopPropagation()
-                        }}
-                      >
-                        Tip: {tipActionLabel} an item to add a category
-                        <button
-                          className="ml-2 text-customGreen"
-                          onClick={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            setShowTip2(false)
-                          }}
-                        >
-                          Got it
-                        </button>
-                      </div>
-                    )}
                     {s.name.split(' ').map((w, i) => (
                       <FitText key={i} text={w} maxFont={18} minFont={10} padding={16} />
                     ))}
@@ -869,7 +923,8 @@ export default function ShoppingList({
                       onTap: () => addItem(item.name),
                       onRightClick: () => openEditDialog(item)
                     })}
-                    className="relative bg-gray-400 text-white font-semibold flex flex-col items-center justify-center h-20 rounded-lg shadow cursor-pointer select-none hover:scale-105 transition-transform"
+                    className={`relative bg-gray-400 text-white font-semibold flex flex-col items-center justify-center h-20 rounded-lg shadow cursor-pointer select-none hover:scale-105 transition-transform ${showTip2 && item.id === tip2TargetId ? 'z-40' : 'z-0'}`}
+                    ref={showTip2 && item.id === tip2TargetId ? tip2AnchorRef : null}
                   >
                         {item.name.split(' ').map((w, i) => (
                           <FitText key={i} text={w} maxFont={18} minFont={10} padding={16} />
@@ -879,6 +934,66 @@ export default function ShoppingList({
                 </div>
               </div>
             ))}
+            {showTip1 && tip1TargetId && (
+              <div
+                ref={tip1BoxRef}
+                className="absolute z-[9999] bg-white text-gray-800 text-xs px-4 py-3 pr-8 rounded shadow border border-gray-200 w-80 max-w-[calc(100%-1rem)] text-left pointer-events-auto"
+                style={tip1Style || { visibility: 'hidden' }}
+                onPointerDown={stopTipEvent}
+                onPointerDownCapture={stopTipEvent}
+                onClick={stopTipEvent}
+              >
+                <button
+                  type="button"
+                  aria-label="Close tip"
+                  className="absolute top-1 right-1 h-6 w-6 rounded hover:bg-gray-100 text-gray-500"
+                  onClick={() => setShowTip1(false)}
+                  onPointerDown={stopTipEvent}
+                >
+                  ×
+                </button>
+                Tip: {tipActionLabel} an item to add a quantity
+                <button
+                  className="ml-2 text-customGreen"
+                  onClick={(e) => {
+                    stopTipEvent(e)
+                    setShowTip1(false)
+                  }}
+                >
+                  Got it
+                </button>
+              </div>
+            )}
+            {showTip2 && tip2TargetId && (
+              <div
+                ref={tip2BoxRef}
+                className="absolute z-[9999] bg-white text-gray-800 text-xs px-4 py-3 pr-8 rounded shadow border border-gray-200 w-80 max-w-[calc(100%-1rem)] text-left pointer-events-auto"
+                style={tip2Style || { visibility: 'hidden' }}
+                onPointerDown={stopTipEvent}
+                onPointerDownCapture={stopTipEvent}
+                onClick={stopTipEvent}
+              >
+                <button
+                  type="button"
+                  aria-label="Close tip"
+                  className="absolute top-1 right-1 h-6 w-6 rounded hover:bg-gray-100 text-gray-500"
+                  onClick={() => setShowTip2(false)}
+                  onPointerDown={stopTipEvent}
+                >
+                  ×
+                </button>
+                Tip: {tipActionLabel} an item to add a category
+                <button
+                  className="ml-2 text-customGreen"
+                  onClick={(e) => {
+                    stopTipEvent(e)
+                    setShowTip2(false)
+                  }}
+                >
+                  Got it
+                </button>
+              </div>
+            )}
 
             {uncategorizedSuggestions.length > 0 && (
               <div>
