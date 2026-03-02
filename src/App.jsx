@@ -12,6 +12,7 @@ import GrocLiLogoAnimation from './GrocLiLogoAnimation'
 import GrocLiLogoStatic from './GrocLiLogoStatic'
 import SupportModal from './SupportModal'
 import ShareDialog from './ShareDialog'
+import LoyaltyCards from './LoyaltyCards'
 export default function App() {
   const [session, setSession] = useState(undefined)
   const [lists, setLists] = useState([])
@@ -449,6 +450,10 @@ export default function App() {
                 </div>
               )
             }
+          />
+          <Route
+            path="/loyalty-cards"
+            element={<LoyaltyCards supabase={supabase} user={session.user} />}
           />
 
           <Route path="/login" element={<Login onLogin={setSession} />} />

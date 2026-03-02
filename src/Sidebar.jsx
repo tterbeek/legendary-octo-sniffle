@@ -1,5 +1,6 @@
 // src/Sidebar.jsx
 import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from './supabaseClient'
 import { IconLogout } from '@tabler/icons-react'
 
@@ -20,6 +21,7 @@ export default function Sidebar({
   const [loading, setLoading] = useState(false)
   const [activeMenu, setActiveMenu] = useState(null)
   const [showSupportModal, setShowSupportModal] = useState(false)
+  const navigate = useNavigate()
 
   const sidebarRef = useRef()
   const menuRefs = useRef({}) // stores refs for each list's context menu
@@ -253,6 +255,7 @@ export default function Sidebar({
               onClick={async () => {
                 // ✅ 1. Optimistically switch UI
                 setCurrentList(list)
+                navigate('/')
                 closeSidebar()
 
                 // ✅ 2. Save locally for next app load (even offline)
@@ -356,6 +359,18 @@ export default function Sidebar({
         </div>
 
       {/* Share GrocLi */}
+      <div className="mt-2">
+        <button
+          className="w-full flex items-center justify-center gap-2 bg-gray-100 text-gray-800 px-2 py-2 rounded hover:bg-gray-200 transition-colors"
+          onClick={() => {
+            navigate('/loyalty-cards')
+            closeSidebar()
+          }}
+        >
+          Loyalty Cards
+        </button>
+      </div>
+
       <div className="mt-2">
         <button
           className="w-full flex items-center justify-center gap-2 bg-gray-100 text-gray-800 px-2 py-2 rounded hover:bg-gray-200 transition-colors"
